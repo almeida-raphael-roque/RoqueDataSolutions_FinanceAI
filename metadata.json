@@ -1,0 +1,6 @@
+{
+  "name": "Finance Intelligence",
+  "description": "Organizador e planejador de finanças pessoais para Google Apps Script",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

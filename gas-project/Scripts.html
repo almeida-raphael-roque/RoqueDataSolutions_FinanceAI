@@ -1,0 +1,201 @@
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script>
+  // Navigation Logic
+  function navigateTo(pageId, title) {
+    $('.page-view').addClass('hidden-page');
+    $('#' + pageId).removeClass('hidden-page');
+    $('#page-title').text(title);
+    
+    // Update active state in sidebar
+    $('.nav-item').removeClass('bg-gray-800 border-l-4 border-primary text-white').addClass('text-gray-400 border-transparent hover:bg-gray-800/50');
+    $(`[data-target="${pageId}"]`).removeClass('text-gray-400 border-transparent hover:bg-gray-800/50').addClass('bg-gray-800 border-l-4 border-primary text-white');
+    
+    // Trigger specific page loads
+    if(pageId === 'page-dashboard') loadDashboard();
+    if(pageId === 'page-transactions') loadTransactions();
+  }
+
+  $(document).ready(function() {
+    $('.nav-item').click(function(e) {
+      e.preventDefault();
+      const target = $(this).data('target');
+      if (!target) return;
+      const title = $(this).find('span.font-medium').text();
+      navigateTo(target, title);
+    });
+    
+    // Initial load
+    loadDashboard();
+
+    // Modal behavior
+    $('#btn-new-transaction').click(() => $('#modal-transaction').removeClass('hidden'));
+    $('#btn-cancel-modal').click(() => $('#modal-transaction').addClass('hidden'));
+    
+    // Form Submit
+    $('#form-transaction').submit(function(e) {
+      e.preventDefault();
+      const btn = $('#btn-save-transaction');
+      btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin mr-2"></i> Salvando...');
+      
+      const data = $('#t-data').val();
+      const valor = parseFloat($('#t-valor').val());
+      const tipo = $('#t-tipo').val();
+      const descricao = $('#t-descricao').val();
+      const categoria = $('#t-categoria').val();
+      
+      if (typeof google !== 'undefined' && google.script) {
+        google.script.run
+          .withSuccessHandler(function() {
+            $('#modal-transaction').addClass('hidden');
+            $('#form-transaction')[0].reset();
+            btn.prop('disabled', false).text('Salvar Transação');
+            loadTransactions();
+            loadDashboard(); // Refresh metrics
+          })
+          .withFailureHandler(function(err) {
+            alert('Erro ao salvar: ' + err.message);
+            btn.prop('disabled', false).text('Salvar Transação');
+          })
+          .saveTransaction(data, valor, tipo, descricao, categoria);
+      } else {
+        // Fallback Mock for local AI Studio view
+        setTimeout(() => {
+          $('#modal-transaction').addClass('hidden');
+          $('#form-transaction')[0].reset();
+          btn.prop('disabled', false).text('Salvar Transação');
+          loadTransactions();
+        }, 1000);
+      }
+    });
+
+    // AI Clean button
+    $('#btn-ai-clean').click(function() {
+      const descInput = $('#t-descricao');
+      const rawText = descInput.val();
+      if (!rawText) return;
+      
+      const btn = $(this);
+      btn.html('<i class="fa-solid fa-spinner fa-spin"></i>');
+      
+      if (typeof google !== 'undefined' && google.script) {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res.descricao) descInput.val(res.descricao);
+            if (res.categoria) $('#t-categoria').val(res.categoria);
+            btn.html('<i class="fa-solid fa-wand-magic-sparkles"></i>');
+          })
+          .withFailureHandler(function(err) {
+            console.error(err);
+            btn.html('<i class="fa-solid fa-wand-magic-sparkles"></i>');
+          })
+          .categorizeTransactionWithAI(rawText);
+      } else {
+        setTimeout(() => {
+          descInput.val('Uber');
+          $('#t-categoria').val('Transporte');
+          btn.html('<i class="fa-solid fa-wand-magic-sparkles"></i>');
+        }, 1200);
+      }
+    });
+  });
+
+  // Formatter utils
+  const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+  // Loaders
+  function getDashboardData() {
+    $('#dashboard-loading').show();
+    $('#dashboard-content').hide();
+    
+    if (typeof google !== 'undefined' && google.script) {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          $('#dashboard-loading').hide();
+          $('#dashboard-content').show();
+          renderDashboard(data);
+        })
+        .withFailureHandler(function(error) {
+          $('#dashboard-loading').hide();
+        })
+        .getDashboardData();
+    } else {
+      setTimeout(() => {
+        $('#dashboard-loading').hide();
+        $('#dashboard-content').show();
+        renderDashboard({ balance: 0, income: 0, expense: 0 });
+      }, 500);
+    }
+  }
+
+  function renderDashboard(data) {
+    $('#balance-amount').text(formatCurrency(data.balance));
+    $('#income-amount').text(formatCurrency(data.income));
+    $('#expense-amount').text(formatCurrency(data.expense));
+  }
+  
+  function loadDashboard() {
+    getDashboardData();
+  }
+
+  function loadTransactions() {
+    const tbody = $('#transactions-body');
+    tbody.html('<tr><td colspan="5" class="p-4 text-center"><i class="fa-solid fa-circle-notch fa-spin text-primary"></i> Carregando...</td></tr>');
+    
+    if (typeof google !== 'undefined' && google.script) {
+      google.script.run
+        .withSuccessHandler(renderTransactions)
+        .withFailureHandler(function() {
+          tbody.html('<tr><td colspan="5" class="p-4 text-center text-danger">Erro ao carregar transações.</td></tr>');
+        })
+        .getTransactions();
+    } else {
+      setTimeout(() => renderTransactions([]), 500);
+    }
+  }
+
+  function renderTransactions(rows) {
+    const tbody = $('#transactions-body');
+    tbody.empty();
+    if (!rows || rows.length === 0) {
+      tbody.html('<tr><td colspan="5" class="p-8 text-center text-gray-500">Nenhuma transação encontrada. Clique em "Nova" para adicionar.</td></tr>');
+      return;
+    }
+    
+    rows.forEach(row => {
+      let dateStr = row.data;
+      if (dateStr && dateStr.substring) {
+         if(dateStr.indexOf('T') !== -1) dateStr = dateStr.split('T')[0];
+         // Simple reformat for display YYYY-MM-DD to DD/MM/YYYY
+         const parts = dateStr.split('-');
+         if(parts.length === 3) dateStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      
+      const valClass = row.tipo === 'Entrada' ? 'text-success' : 'text-gray-900';
+      const valPrefix = row.tipo === 'Entrada' ? '+ ' : '- ';
+      const categoryColor = getCategoryColor(row.categoria);
+
+      tbody.append(`
+        <tr class="hover:bg-gray-50/50 transition-colors group">
+          <td class="p-4 text-gray-500">${dateStr}</td>
+          <td class="p-4 font-medium text-gray-900">${row.descricao}</td>
+          <td class="p-4"><span class="px-2.5 py-1 ${categoryColor} rounded-md text-xs font-medium">${row.categoria}</span></td>
+          <td class="p-4 text-gray-500 text-xs uppercase">${row.tipo}</td>
+          <td class="p-4 text-right ${valClass} font-medium">${valPrefix}${formatCurrency(row.valor)}</td>
+        </tr>
+      `);
+    });
+  }
+
+  function getCategoryColor(cat) {
+    switch(cat) {
+      case 'Alimentação': return 'bg-orange-50 text-orange-700 border border-orange-100';
+      case 'Transporte': return 'bg-blue-50 text-blue-700 border border-blue-100';
+      case 'Moradia': return 'bg-purple-50 text-purple-700 border border-purple-100';
+      case 'Lazer': return 'bg-pink-50 text-pink-700 border border-pink-100';
+      case 'Saúde': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+      case 'Renda': return 'bg-success/10 text-success border border-success/20';
+      case 'Transferência': return 'bg-gray-100 text-gray-700 border border-gray-200';
+      default: return 'bg-gray-100 text-gray-700 border border-gray-200';
+    }
+  }
+</script>

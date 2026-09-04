@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <title>Finance Intelligence</title>
+    <?!= include('Styles'); ?>
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
+    <div class="flex h-screen w-full">
+      <?!= include('Components'); ?>
+      
+      <div class="flex-1 flex flex-col h-screen overflow-hidden">
+        <header class="bg-white shadow-sm z-10 p-5 flex justify-between items-center border-b border-gray-200">
+          <h2 class="text-xl font-semibold text-gray-800" id="page-title">Visão Geral</h2>
+          <div class="flex items-center space-x-4">
+            <button class="text-gray-400 hover:text-gray-600 transition-colors">
+              <i class="fa-regular fa-bell text-lg"></i>
+            </button>
+            <div class="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold border border-primary/20">
+              U
+            </div>
+          </div>
+        </header>
+
+        <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6 md:p-8" id="main-content">
+          <?!= include('Dashboard'); ?>
+          <?!= include('Transactions_page'); ?>
+        </main>
+      </div>
+    </div>
+    
+    <?!= include('Scripts'); ?>
+  </body>
+</html>

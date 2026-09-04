@@ -1,0 +1,79 @@
+<div id="page-transactions" class="page-view hidden-page space-y-6">
+  <!-- Modal Nova Transação -->
+  <div id="modal-transaction" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 m-4">
+      <h3 class="text-xl font-bold text-gray-900 mb-5">Nova Transação</h3>
+      <form id="form-transaction" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
+          <input type="date" id="t-data" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
+          <input type="number" step="0.01" id="t-valor" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+          <select id="t-tipo" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+            <option value="Saída">Saída</option>
+            <option value="Entrada">Entrada</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Descrição do Extrato</label>
+          <div class="flex space-x-2">
+            <input type="text" id="t-descricao" required class="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Ex: 99* POP SP">
+            <button type="button" id="btn-ai-clean" class="bg-gray-100 text-primary hover:bg-gray-200 px-4 rounded-lg transition-colors" title="Limpar com IA"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+          </div>
+          <p class="text-xs text-gray-400 mt-1">Cole a descrição exata e use a varinha para a IA classificar e limpar.</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Categoria Macro</label>
+          <select id="t-categoria" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+            <option value="Alimentação">Alimentação</option>
+            <option value="Transporte">Transporte</option>
+            <option value="Moradia">Moradia</option>
+            <option value="Lazer">Lazer</option>
+            <option value="Saúde">Saúde</option>
+            <option value="Renda">Renda</option>
+            <option value="Transferência">Transferência</option>
+            <option value="DESCONHECIDO" selected>DESCONHECIDO</option>
+          </select>
+        </div>
+        <div class="flex justify-end space-x-3 pt-6 border-t border-gray-100 mt-6">
+          <button type="button" id="btn-cancel-modal" class="px-5 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+          <button type="submit" id="btn-save-transaction" class="px-5 py-2.5 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors">
+            Salvar Transação
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="bg-surface rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+    <div class="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <h4 class="font-semibold text-gray-800 text-lg">Suas Transações</h4>
+      <div class="flex items-center space-x-3">
+        <button id="btn-new-transaction" class="bg-primary hover:bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm">
+          <i class="fa-solid fa-plus mr-2"></i> Nova
+        </button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-100">
+            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Data</th>
+            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Descrição Limpa</th>
+            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Categoria</th>
+            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tipo</th>
+            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Valor</th>
+          </tr>
+        </thead>
+        <tbody class="text-sm divide-y divide-gray-100" id="transactions-body">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
