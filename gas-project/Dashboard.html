@@ -10,7 +10,7 @@
       <div class="bg-surface rounded-2xl shadow-sm p-6 border border-gray-200 hover:shadow-md transition-shadow">
         <div class="flex justify-between items-start">
           <div>
-            <p class="text-sm font-medium text-gray-500">Saldo Atual</p>
+            <p class="text-sm font-medium text-gray-500">Saldo do Período</p>
             <h3 class="text-3xl font-bold text-gray-900 mt-2" id="balance-amount">R$ 0,00</h3>
           </div>
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -43,8 +43,106 @@
         </div>
       </div>
     </div>
+
+    <!-- Charts Section -->
+    <div class="space-y-6">
+      <div class="bg-surface rounded-2xl shadow-sm p-6 border border-gray-200">
+        <div class="flex justify-between items-center mb-6">
+          <h4 class="font-semibold text-gray-800 text-lg">Evolução Financeira</h4>
+        </div>
+        <div class="h-80 w-full relative">
+          <canvas id="evolutionChart"></canvas>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="bg-surface rounded-2xl shadow-sm p-6 border border-gray-200">
+          <div class="flex justify-between items-center mb-6">
+            <h4 class="font-semibold text-gray-800 text-lg">Perfil de Despesas</h4>
+          </div>
+          <div class="h-80 w-full relative">
+            <canvas id="macroChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-surface rounded-2xl shadow-sm p-6 border border-gray-200">
+          <div class="flex justify-between items-center mb-6">
+            <div class="flex items-center space-x-3">
+              <button id="btn-back-expense" class="hidden w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors" title="Voltar">
+                <i class="fa-solid fa-arrow-left text-sm"></i>
+              </button>
+              <h4 class="font-semibold text-gray-800 text-lg" id="title-expense-chart">Despesas por Categoria</h4>
+            </div>
+          </div>
+          <div class="h-80 w-full overflow-y-auto pr-2 custom-scrollbar">
+            <div class="relative w-full" id="categoryChartContainer" style="height: 100%;">
+              <canvas id="categoryChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-surface rounded-2xl shadow-sm p-6 border border-gray-200">
+          <div class="flex justify-between items-center mb-6">
+            <h4 class="font-semibold text-gray-800 text-lg">Receitas por Categoria</h4>
+          </div>
+          <div class="h-80 w-full overflow-y-auto pr-2 custom-scrollbar">
+            <div class="relative w-full" id="incomeCategoryChartContainer" style="height: 100%;">
+              <canvas id="incomeCategoryChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- Deep Drilldown Modal -->
+<div id="deep-drilldown-modal" class="fixed inset-0 z-50 hidden bg-gray-900 bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto animate-fade-in custom-scrollbar">
+    <div class="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex justify-between items-center z-10">
+      <h3 class="text-xl font-bold text-gray-800" id="deep-drilldown-title">Histórico: Categoria</h3>
+      <button id="btn-close-drilldown" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    
+    <div class="p-6 space-y-6">
+      <!-- Insights Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <p class="text-sm text-gray-500 font-medium mb-1">Média Mensal</p>
+          <h4 class="text-2xl font-bold text-gray-800" id="drilldown-avg">R$ 0,00</h4>
+          <p class="text-xs text-gray-400 mt-1">Todo o período</p>
+        </div>
+        
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <p class="text-sm text-gray-500 font-medium mb-1">Tendência (MoM)</p>
+          <h4 class="text-2xl font-bold flex items-center" id="drilldown-mom">
+            0%
+          </h4>
+          <p class="text-xs text-gray-400 mt-1">Em relação ao mês ativo anterior</p>
+        </div>
+        
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <p class="text-sm text-gray-500 font-medium mb-1">Padrão de Crescimento</p>
+          <h4 class="text-2xl font-bold" id="drilldown-trend">
+            Estável
+          </h4>
+          <p class="text-xs text-gray-400 mt-1">Média de variação histórica</p>
+        </div>
+      </div>
+      
+      <!-- Line Chart -->
+      <div class="bg-white border border-gray-100 rounded-xl p-4">
+        <h4 class="text-sm font-semibold text-gray-600 mb-4">Evolução de Gastos</h4>
+        <div class="h-64 w-full relative">
+          <canvas id="deepDrilldownChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
   .animate-fade-in {
     animation: fadeIn 0.4s ease-out forwards;

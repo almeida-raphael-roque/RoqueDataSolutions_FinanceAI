@@ -11,8 +11,35 @@
       <?!= include('Components'); ?>
       
       <div class="flex-1 flex flex-col h-screen overflow-hidden">
-        <header class="bg-white shadow-sm z-10 p-5 flex justify-between items-center border-b border-gray-200">
-          <h2 class="text-xl font-semibold text-gray-800" id="page-title">Visão Geral</h2>
+        <header class="bg-white shadow-sm z-10 p-5 flex flex-wrap gap-4 justify-between items-center border-b border-gray-200">
+          <div class="flex items-center">
+            <h2 class="text-xl font-semibold text-gray-800 mr-6" id="page-title">Visão Geral</h2>
+            <div class="hidden md:flex items-center space-x-2">
+              <select id="filter-month" class="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-primary focus:border-primary block p-2">
+                <option value="all">Todos os Meses</option>
+                <option value="1">Janeiro</option>
+                <option value="2">Fevereiro</option>
+                <option value="3">Março</option>
+                <option value="4">Abril</option>
+                <option value="5">Maio</option>
+                <option value="6">Junho</option>
+                <option value="7">Julho</option>
+                <option value="8">Agosto</option>
+                <option value="9">Setembro</option>
+                <option value="10">Outubro</option>
+                <option value="11">Novembro</option>
+                <option value="12">Dezembro</option>
+              </select>
+              <select id="filter-year" class="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-primary focus:border-primary block p-2">
+                <option value="all">Todos os Anos</option>
+                <option value="2023">2023</option>
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
+                <option value="2027">2027</option>
+              </select>
+            </div>
+          </div>
           <div class="flex items-center space-x-4">
             <button class="text-gray-400 hover:text-gray-600 transition-colors">
               <i class="fa-regular fa-bell text-lg"></i>

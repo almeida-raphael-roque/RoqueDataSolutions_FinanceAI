@@ -1,5 +1,10 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
+  Chart.register(ChartDataLabels);
+  Chart.defaults.plugins.datalabels.display = false; // Disable globally by default
+
   // Navigation Logic
   function navigateTo(pageId, title) {
     $('.page-view').addClass('hidden-page');
@@ -16,6 +21,31 @@
   }
 
   $(document).ready(function() {
+    // Drilldown back button
+    $('#btn-back-expense').click(function() {
+      if (activeMacroFilter) {
+        const filteredData = currentExpenseData.filter(d => d.macro === activeMacroFilter);
+        renderCategoryChart(filteredData, false);
+      } else {
+        renderCategoryChart(currentExpenseData, false);
+      }
+    });
+
+    // Set default filters to current month/year
+    const now = new Date();
+    $('#filter-month').val(now.getMonth() + 1);
+    $('#filter-year').val(now.getFullYear());
+
+    $('#filter-month, #filter-year').change(function() {
+      // Depending on active page, reload data
+      if (!$('#page-dashboard').hasClass('hidden-page')) {
+        loadDashboard();
+      }
+      if (!$('#page-transactions').hasClass('hidden-page')) {
+        loadTransactions();
+      }
+    });
+
     $('.nav-item').click(function(e) {
       e.preventDefault();
       const target = $(this).data('target');
@@ -97,6 +127,10 @@
         }, 1200);
       }
     });
+
+    $('#btn-close-drilldown').click(function() {
+      $('#deep-drilldown-modal').addClass('hidden');
+    });
   });
 
   // Formatter utils
@@ -106,6 +140,9 @@
   function getDashboardData() {
     $('#dashboard-loading').show();
     $('#dashboard-content').hide();
+    
+    const year = $('#filter-year').val();
+    const month = $('#filter-month').val();
     
     if (typeof google !== 'undefined' && google.script) {
       google.script.run
@@ -117,22 +154,522 @@
         .withFailureHandler(function(error) {
           $('#dashboard-loading').hide();
         })
-        .getDashboardData();
+        .getDashboardData(year, month);
     } else {
       setTimeout(() => {
         $('#dashboard-loading').hide();
         $('#dashboard-content').show();
-        renderDashboard({ balance: 0, income: 0, expense: 0 });
+        // Mock for local testing
+        let mockChartData = [
+          {label: '01/2026', income: 4500, expense: 2100},
+          {label: '02/2026', income: 4800, expense: 2800},
+          {label: '03/2026', income: 5100, expense: 1900},
+          {label: '04/2026', income: 4900, expense: 3200},
+          {label: '05/2026', income: 5500, expense: 2400}
+        ];
+        
+        // Filter chart data by year
+        if (year !== 'all') {
+          mockChartData = mockChartData.filter(d => d.label.endsWith(year));
+        }
+        
+        let mockIncome = 0;
+        let mockExpense = 0;
+        
+        // Compute card values based on selected month and year
+        mockChartData.forEach(d => {
+           const [mLabel, yLabel] = d.label.split('/');
+           const matchM = (month === 'all' || parseInt(month) === parseInt(mLabel));
+           if (matchM) {
+             mockIncome += d.income;
+             mockExpense += d.expense;
+           }
+        });
+
+        // Mock for local testing category chart
+        let mockCategoryData = [
+          {label: 'Alimentação', value: 1200, color: '#ef4444', macro: 'Variáveis Essenciais', breakdown: [{label: 'Mercado Livre', value: 800, color: '#ef4444'}, {label: 'Restaurante McDonald\'s', value: 400, color: '#f87171'}]},
+          {label: 'Moradia', value: 1500, color: '#991b1b', macro: 'Fixas', breakdown: [{label: 'Aluguel', value: 1200, color: '#991b1b'}, {label: 'Conta de Luz', value: 300, color: '#ef4444'}]},
+          {label: 'Transporte', value: 450, color: '#ef4444', macro: 'Variáveis Essenciais', breakdown: [{label: 'Uber', value: 250, color: '#f87171'}, {label: 'Posto Ipiranga', value: 200, color: '#ef4444'}]},
+          {label: 'Saúde', value: 300, color: '#ef4444', macro: 'Variáveis Essenciais', breakdown: [{label: 'Farmácia', value: 300, color: '#ef4444'}]},
+          {label: 'Lazer', value: 250, color: '#f87171', macro: 'Discricionárias', breakdown: [{label: 'Cinema', value: 100, color: '#f87171'}, {label: 'Netflix', value: 150, color: '#f87171'}]}
+        ].sort((a, b) => b.value - a.value);
+
+        let mockIncomeCategoryData = [
+          {label: 'Salário', value: 5000},
+          {label: 'Renda extra', value: 800},
+          {label: 'Estorno', value: 150},
+          {label: 'Rendimento', value: 250}
+        ].sort((a, b) => b.value - a.value);
+
+        let mockMacroData = [
+          {label: 'Fixas', value: 1200, color: '#991b1b'},
+          {label: 'Variáveis Essenciais', value: 1500, color: '#ef4444'},
+          {label: 'Discricionárias', value: 650, color: '#f87171'}
+        ].sort((a, b) => b.value - a.value);
+
+        let mockRawExpenses = [
+          {date: new Date(2026, 0, 15).getTime(), desc: 'Restaurante McDonald\'s', value: 120},
+          {date: new Date(2026, 1, 10).getTime(), desc: 'Restaurante McDonald\'s', value: 150},
+          {date: new Date(2026, 2, 22).getTime(), desc: 'Restaurante McDonald\'s', value: 130},
+          {date: new Date(2026, 3, 5).getTime(), desc: 'Restaurante McDonald\'s', value: 400},
+          {date: new Date(2026, 0, 10).getTime(), desc: 'Mercado Livre', value: 500},
+          {date: new Date(2026, 3, 12).getTime(), desc: 'Mercado Livre', value: 800}
+        ];
+
+        renderDashboard({ 
+          balance: mockIncome - mockExpense, 
+          income: mockIncome, 
+          expense: mockExpense, 
+          chartData: mockChartData,
+          categoryChartData: mockCategoryData,
+          incomeCategoryChartData: mockIncomeCategoryData,
+          macroChartData: mockMacroData,
+          rawExpenses: mockRawExpenses
+        });
       }, 500);
     }
   }
+
+  let evolutionChartInstance = null;
+  let categoryChartInstance = null;
+  let incomeCategoryChartInstance = null;
+  let macroChartInstance = null;
+  let deepDrilldownChartInstance = null;
+  let currentExpenseData = [];
+  let rawExpensesData = [];
+  let activeMacroFilter = null;
 
   function renderDashboard(data) {
     $('#balance-amount').text(formatCurrency(data.balance));
     $('#income-amount').text(formatCurrency(data.income));
     $('#expense-amount').text(formatCurrency(data.expense));
+    
+    if (data.rawExpenses) {
+      rawExpensesData = data.rawExpenses;
+    }
+    
+    if (data.chartData) {
+      renderEvolutionChart(data.chartData);
+    }
+    if (data.categoryChartData) {
+      currentExpenseData = data.categoryChartData;
+      activeMacroFilter = null; // reset filter on new data load
+      renderCategoryChart(data.categoryChartData);
+    }
+    if (data.incomeCategoryChartData) {
+      renderIncomeCategoryChart(data.incomeCategoryChartData);
+    }
+    if (data.macroChartData) {
+      renderMacroChart(data.macroChartData);
+    }
   }
   
+  function renderEvolutionChart(chartData) {
+    const ctx = document.getElementById('evolutionChart');
+    if (!ctx) return;
+    
+    if (evolutionChartInstance) {
+      evolutionChartInstance.destroy();
+    }
+    
+    if (!chartData || chartData.length === 0) {
+      return;
+    }
+    
+    evolutionChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartData.map(d => d.label),
+        datasets: [
+          {
+            label: 'Receitas',
+            data: chartData.map(d => d.income),
+            borderColor: '#22c55e', // text-success
+            backgroundColor: 'rgba(34, 197, 94, 0.15)', // bg-success/15
+            fill: true,
+            tension: 0.4,
+            borderWidth: 2,
+            pointBackgroundColor: '#22c55e',
+            pointRadius: 4,
+            pointHoverRadius: 6
+          },
+          {
+            label: 'Despesas',
+            data: chartData.map(d => d.expense),
+            borderColor: '#ef4444', // text-danger
+            backgroundColor: 'rgba(239, 68, 68, 0.15)', // bg-danger/15
+            fill: true,
+            tension: 0.4,
+            borderWidth: 2,
+            pointBackgroundColor: '#ef4444',
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { usePointStyle: true, boxWidth: 8, padding: 20, font: { family: 'Inter, sans-serif' } }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+            titleFont: { family: 'Inter, sans-serif', size: 13 },
+            bodyFont: { family: 'Inter, sans-serif', size: 13 },
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                  label += ': ';
+                }
+                if (context.parsed.y !== null) {
+                  label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                }
+                return label;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { borderDash: [4, 4], color: '#f3f4f6' },
+            ticks: {
+              font: { family: 'Inter, sans-serif' },
+              color: '#6b7280',
+              callback: function(value) {
+                if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
+                return 'R$ ' + value;
+              }
+            }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { font: { family: 'Inter, sans-serif' }, color: '#6b7280' }
+          }
+        }
+      }
+    });
+  }
+  
+  function renderCategoryChart(categoryData, isDrilldown = false, parentLabel = '') {
+    const ctx = document.getElementById('categoryChart');
+    if (!ctx) return;
+    
+    if (categoryChartInstance) {
+      categoryChartInstance.destroy();
+    }
+    
+    if (isDrilldown) {
+      $('#btn-back-expense').removeClass('hidden');
+      $('#title-expense-chart').text(parentLabel);
+    } else {
+      $('#btn-back-expense').addClass('hidden');
+      if (activeMacroFilter) {
+        $('#title-expense-chart').text('Despesas por Categoria (' + activeMacroFilter + ')');
+      } else {
+        $('#title-expense-chart').text('Despesas por Categoria');
+      }
+    }
+    
+    if (!categoryData || categoryData.length === 0) {
+      return;
+    }
+    
+    // Adjust height dynamically for scrolling
+    const containerHeight = Math.max(320, categoryData.length * 45);
+    $('#categoryChartContainer').css('height', containerHeight + 'px');
+    
+    categoryChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: categoryData.map(d => d.label),
+        datasets: [{
+          label: 'Despesas',
+          data: categoryData.map(d => d.value),
+          backgroundColor: categoryData.map(d => d.color || '#ef4444'), // fallback to intermediate red
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y', // Makes the bar chart horizontal
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (e, elements) => {
+          if (elements.length > 0) {
+            const index = elements[0].index;
+            const clickedData = categoryData[index];
+            if (!isDrilldown) {
+              if (clickedData && clickedData.breakdown) {
+                renderCategoryChart(clickedData.breakdown, true, clickedData.label);
+              }
+            } else {
+              openDeepDrilldown(clickedData.label);
+            }
+          }
+        },
+        onHover: (event, chartElement) => {
+          event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+        },
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            display: function(context) {
+              const dataset = context.chart.data.datasets[0];
+              const value = dataset.data[context.dataIndex];
+              const total = dataset.data.reduce((acc, current) => acc + current, 0);
+              if (total === 0) return false;
+              return ((value / total) * 100) >= 5;
+            },
+            color: 'white',
+            anchor: 'end',
+            align: 'start',
+            offset: 4,
+            font: { family: 'Inter, sans-serif', weight: '600', size: 12 },
+            formatter: (value, context) => {
+              const dataset = context.chart.data.datasets[0];
+              const total = dataset.data.reduce((acc, current) => acc + current, 0);
+              if (total === 0) return '0%';
+              return ((value / total) * 100).toFixed(1) + '%';
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+            titleFont: { family: 'Inter, sans-serif', size: 13 },
+            bodyFont: { family: 'Inter, sans-serif', size: 13 },
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.x);
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { borderDash: [4, 4], color: '#f3f4f6' },
+            ticks: {
+              font: { family: 'Inter, sans-serif' },
+              color: '#6b7280',
+              callback: function(value) {
+                if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
+                return 'R$ ' + value;
+              }
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { font: { family: 'Inter, sans-serif', weight: '500' }, color: '#374151' }
+          }
+        }
+      }
+    });
+  }
+  
+  function renderIncomeCategoryChart(categoryData) {
+    const ctx = document.getElementById('incomeCategoryChart');
+    if (!ctx) return;
+    
+    if (incomeCategoryChartInstance) {
+      incomeCategoryChartInstance.destroy();
+    }
+    
+    if (!categoryData || categoryData.length === 0) {
+      return;
+    }
+    
+    // Adjust height dynamically for scrolling
+    const containerHeight = Math.max(320, categoryData.length * 45);
+    $('#incomeCategoryChartContainer').css('height', containerHeight + 'px');
+    
+    incomeCategoryChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: categoryData.map(d => d.label),
+        datasets: [{
+          label: 'Receitas',
+          data: categoryData.map(d => d.value),
+          backgroundColor: '#22c55e', // text-success
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y', // Makes the bar chart horizontal
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            display: function(context) {
+              const dataset = context.chart.data.datasets[0];
+              const value = dataset.data[context.dataIndex];
+              const total = dataset.data.reduce((acc, current) => acc + current, 0);
+              if (total === 0) return false;
+              return ((value / total) * 100) >= 5;
+            },
+            color: 'white',
+            anchor: 'end',
+            align: 'start',
+            offset: 4,
+            font: { family: 'Inter, sans-serif', weight: '600', size: 12 },
+            formatter: (value, context) => {
+              const dataset = context.chart.data.datasets[0];
+              const total = dataset.data.reduce((acc, current) => acc + current, 0);
+              if (total === 0) return '0%';
+              return ((value / total) * 100).toFixed(1) + '%';
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+            titleFont: { family: 'Inter, sans-serif', size: 13 },
+            bodyFont: { family: 'Inter, sans-serif', size: 13 },
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.x);
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { borderDash: [4, 4], color: '#f3f4f6' },
+            ticks: {
+              font: { family: 'Inter, sans-serif' },
+              color: '#6b7280',
+              callback: function(value) {
+                if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
+                return 'R$ ' + value;
+              }
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { font: { family: 'Inter, sans-serif', weight: '500' }, color: '#374151' }
+          }
+        }
+      }
+    });
+  }
+
+  function renderMacroChart(macroData) {
+    const ctx = document.getElementById('macroChart');
+    if (!ctx) return;
+    
+    if (macroChartInstance) {
+      macroChartInstance.destroy();
+    }
+    
+    if (!macroData || macroData.length === 0) {
+      return;
+    }
+    
+    macroChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: macroData.map(d => d.label),
+        datasets: [{
+          label: 'Despesas',
+          data: macroData.map(d => d.value),
+          backgroundColor: macroData.map(d => d.color),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (e, elements) => {
+          if (elements.length > 0) {
+            const index = elements[0].index;
+            const clickedLabel = macroData[index].label;
+            
+            if (activeMacroFilter === clickedLabel) {
+              // Toggle off
+              activeMacroFilter = null;
+              renderCategoryChart(currentExpenseData, false);
+            } else {
+              // Toggle on
+              activeMacroFilter = clickedLabel;
+              const filteredData = currentExpenseData.filter(d => d.macro === activeMacroFilter);
+              renderCategoryChart(filteredData, false);
+            }
+          }
+        },
+        onHover: (event, chartElement) => {
+          event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+        },
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            display: function(context) {
+              const dataset = context.chart.data.datasets[0];
+              const value = dataset.data[context.dataIndex];
+              const total = dataset.data.reduce((acc, current) => acc + current, 0);
+              if (total === 0) return false;
+              return ((value / total) * 100) >= 5;
+            },
+            color: 'white',
+            anchor: 'end',
+            align: 'start',
+            offset: 4,
+            font: { family: 'Inter, sans-serif', weight: '600', size: 12 },
+            formatter: (value, context) => {
+              const dataset = context.chart.data.datasets[0];
+              const total = dataset.data.reduce((acc, current) => acc + current, 0);
+              if (total === 0) return '0%';
+              return ((value / total) * 100).toFixed(1) + '%';
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+            titleFont: { family: 'Inter, sans-serif', size: 13 },
+            bodyFont: { family: 'Inter, sans-serif', size: 13 },
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.x);
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { borderDash: [4, 4], color: '#f3f4f6' },
+            ticks: {
+              font: { family: 'Inter, sans-serif' },
+              color: '#6b7280',
+              callback: function(value) {
+                if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
+                return 'R$ ' + value;
+              }
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { font: { family: 'Inter, sans-serif', weight: '500' }, color: '#374151' }
+          }
+        }
+      }
+    });
+  }
+
   function loadDashboard() {
     getDashboardData();
   }
@@ -141,13 +678,16 @@
     const tbody = $('#transactions-body');
     tbody.html('<tr><td colspan="5" class="p-4 text-center"><i class="fa-solid fa-circle-notch fa-spin text-primary"></i> Carregando...</td></tr>');
     
+    const year = $('#filter-year').val();
+    const month = $('#filter-month').val();
+    
     if (typeof google !== 'undefined' && google.script) {
       google.script.run
         .withSuccessHandler(renderTransactions)
         .withFailureHandler(function() {
           tbody.html('<tr><td colspan="5" class="p-4 text-center text-danger">Erro ao carregar transações.</td></tr>');
         })
-        .getTransactions();
+        .getTransactions(year, month);
     } else {
       setTimeout(() => renderTransactions([]), 500);
     }
@@ -197,5 +737,131 @@
       case 'Transferência': return 'bg-gray-100 text-gray-700 border border-gray-200';
       default: return 'bg-gray-100 text-gray-700 border border-gray-200';
     }
+  }
+
+  function openDeepDrilldown(descLabel) {
+    $('#deep-drilldown-modal').removeClass('hidden');
+    $('#deep-drilldown-title').text('Histórico: ' + descLabel);
+    
+    // Filter raw data for this sub-category
+    const filtered = rawExpensesData.filter(d => d.desc === descLabel).sort((a, b) => a.date - b.date);
+    
+    // Group by Month/Year
+    const temporalData = {};
+    filtered.forEach(item => {
+      const d = new Date(item.date);
+      const mNum = (d.getMonth() + 1).toString().padStart(2, '0');
+      const y = d.getFullYear();
+      const key = `${y}-${mNum}`;
+      const label = `${mNum}/${y}`;
+      
+      if (!temporalData[key]) temporalData[key] = { label: label, sortKey: key, value: 0 };
+      temporalData[key].value += item.value;
+    });
+    
+    const chartData = Object.values(temporalData).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    
+    // Calculate metrics
+    let avg = 0;
+    let mom = 0;
+    let trend = 'Sem dados';
+    
+    if (chartData.length > 0) {
+      const total = chartData.reduce((acc, curr) => acc + curr.value, 0);
+      avg = total / chartData.length;
+      
+      if (chartData.length > 1) {
+        const last = chartData[chartData.length - 1].value;
+        const prev = chartData[chartData.length - 2].value;
+        if (prev > 0) {
+          mom = ((last - prev) / prev) * 100;
+        } else {
+          mom = 100; // if previous was 0 and now has value
+        }
+      }
+      
+      if (mom > 0) trend = 'Subindo';
+      else if (mom < 0) trend = 'Descendo';
+      else trend = 'Estável';
+    }
+    
+    $('#drilldown-avg').text(formatCurrency(avg));
+    
+    const momEl = $('#drilldown-mom');
+    momEl.empty();
+    if (chartData.length < 2) {
+      momEl.text('-');
+    } else {
+      const momText = Math.abs(mom).toFixed(1) + '%';
+      if (mom > 0) {
+        momEl.html(`<i class="fa-solid fa-arrow-trend-up text-danger mr-2"></i><span class="text-danger">+${momText}</span>`);
+      } else if (mom < 0) {
+        momEl.html(`<i class="fa-solid fa-arrow-trend-down text-success mr-2"></i><span class="text-success">-${momText}</span>`);
+      } else {
+        momEl.html(`<span class="text-gray-500">0%</span>`);
+      }
+    }
+    
+    $('#drilldown-trend').text(trend);
+    
+    // Render chart
+    const ctx = document.getElementById('deepDrilldownChart');
+    if (!ctx) return;
+    
+    if (deepDrilldownChartInstance) {
+      deepDrilldownChartInstance.destroy();
+    }
+    
+    deepDrilldownChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartData.map(d => d.label),
+        datasets: [{
+          label: 'Gastos',
+          data: chartData.map(d => d.value),
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          fill: true,
+          tension: 0.4,
+          borderWidth: 2,
+          pointBackgroundColor: '#ef4444',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          datalabels: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+            titleFont: { family: 'Inter, sans-serif', size: 13 },
+            bodyFont: { family: 'Inter, sans-serif', size: 13 },
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { family: 'Inter, sans-serif' }, color: '#6b7280' }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { borderDash: [4, 4], color: '#f3f4f6' },
+            ticks: { font: { family: 'Inter, sans-serif' }, color: '#6b7280' }
+          }
+        }
+      }
+    });
   }
 </script>
