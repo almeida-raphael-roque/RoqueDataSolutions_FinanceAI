@@ -1,79 +1,278 @@
 <div id="page-transactions" class="page-view hidden-page space-y-6">
-  <!-- Modal Nova Transação -->
-  <div id="modal-transaction" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 m-4">
-      <h3 class="text-xl font-bold text-gray-900 mb-5">Nova Transação</h3>
-      <form id="form-transaction" class="space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
-          <input type="date" id="t-data" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
-          <input type="number" step="0.01" id="t-valor" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-          <select id="t-tipo" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-            <option value="Saída">Saída</option>
-            <option value="Entrada">Entrada</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Descrição do Extrato</label>
-          <div class="flex space-x-2">
-            <input type="text" id="t-descricao" required class="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Ex: 99* POP SP">
-            <button type="button" id="btn-ai-clean" class="bg-gray-100 text-primary hover:bg-gray-200 px-4 rounded-lg transition-colors" title="Limpar com IA"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+  <!-- Modal Vincular Planilha do Google Sheets -->
+  <div id="modal-link-sheet" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+      <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg border border-emerald-100">
+            <i class="fa-solid fa-table"></i>
           </div>
-          <p class="text-xs text-gray-400 mt-1">Cole a descrição exata e use a varinha para a IA classificar e limpar.</p>
+          <div>
+            <h3 class="text-lg font-bold text-gray-800">Vincular Planilha do Google Sheets</h3>
+            <p class="text-xs text-gray-500">Conecte sua própria planilha para alimentar esta aplicação</p>
+          </div>
         </div>
+        <button type="button" id="btn-close-link-sheet" class="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-sm">
+        <!-- Status Atual -->
+        <div class="p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+              Planilha Ativa
+            </span>
+            <a id="current-sheet-link-anchor" href="https://docs.google.com/spreadsheets/d/17Dk0WTAsgPprAmx6jIWXbRsKNrtTvu9LEfCWpG2MuC4/edit" target="_blank" class="text-xs text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 font-medium">
+              <span>Abrir no Sheets</span>
+              <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+            </a>
+          </div>
+          <div id="current-sheet-title-display" class="font-medium text-gray-900 truncate">Planilha Principal</div>
+          <div id="current-sheet-id-display" class="text-xs text-gray-400 font-mono truncate mt-0.5">ID: 17Dk0WTAsgPprAmx6jIWXbRsKNrtTvu9LEfCWpG2MuC4</div>
+        </div>
+
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Categoria Macro</label>
-          <select id="t-categoria" required class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-            <option value="Alimentação">Alimentação</option>
-            <option value="Transporte">Transporte</option>
-            <option value="Moradia">Moradia</option>
-            <option value="Lazer">Lazer</option>
-            <option value="Saúde">Saúde</option>
-            <option value="Renda">Renda</option>
-            <option value="Transferência">Transferência</option>
-            <option value="DESCONHECIDO" selected>DESCONHECIDO</option>
-          </select>
+          <label for="input-sheet-url" class="block text-sm font-medium text-gray-700 mb-1.5">
+            Link (URL) da Planilha do Google Sheets
+          </label>
+          <input 
+            type="text" 
+            id="input-sheet-url" 
+            placeholder="docs.google.com/spreadsheets/d/17Dk0WTAsgPprAmx6jIWXbRsKNrtTvu9LEfCWpG2MuC4/edit..." 
+            class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-xs sm:text-sm text-gray-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 font-mono"
+          >
+          <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
+            Cole o link completo copiado da barra de endereços do seu navegador. As transações e regras da sua planilha alimentarão o sistema de forma exclusiva.
+          </p>
         </div>
-        <div class="flex justify-end space-x-3 pt-6 border-t border-gray-100 mt-6">
-          <button type="button" id="btn-cancel-modal" class="px-5 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
-          <button type="submit" id="btn-save-transaction" class="px-5 py-2.5 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors">
-            Salvar Transação
+
+        <div id="link-sheet-alert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+
+        <div class="bg-blue-50/70 border border-blue-100 rounded-xl p-3.5 text-xs text-blue-900 flex items-start space-x-2.5">
+          <i class="fa-solid fa-shield-halved text-blue-600 mt-0.5 text-sm"></i>
+          <div class="leading-relaxed">
+            <span class="font-semibold text-blue-950">Isolamento total por usuário:</span> Cada usuário com seu link usará sua respectiva planilha do Google Sheets, sem nenhuma interferência entre si.
+          </div>
+        </div>
+      </div>
+
+      <div class="p-5 bg-gray-50 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <button type="button" id="btn-restore-default-sheet" class="text-xs text-gray-500 hover:text-gray-700 underline font-medium order-2 sm:order-1 transition-colors">
+          Restaurar planilha padrão
+        </button>
+        <div class="flex items-center space-x-2 w-full sm:w-auto justify-end order-1 sm:order-2">
+          <button type="button" id="btn-cancel-link-sheet" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200/60 rounded-lg font-medium transition-colors">
+            Cancelar
+          </button>
+          <button type="button" id="btn-save-link-sheet" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center space-x-2">
+            <i class="fa-solid fa-link text-xs"></i>
+            <span>Vincular Planilha</span>
           </button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 
   <div class="bg-surface rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-    <div class="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <h4 class="font-semibold text-gray-800 text-lg">Suas Transações</h4>
-      <div class="flex items-center space-x-3">
+    <div class="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <!-- Search by description input -->
+      <div class="relative flex-1 max-w-md w-full">
+        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+        <input 
+          type="text" 
+          id="tx-search-input" 
+          placeholder="Pesquisar por descrição..." 
+          class="w-full pl-10 pr-9 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+        >
+        <button 
+          type="button" 
+          id="btn-clear-tx-search" 
+          class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full transition-colors"
+          title="Limpar pesquisa"
+        >
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 md:gap-3 flex-wrap justify-end">
+        <div class="relative" id="export-dropdown-container">
+          <button id="btn-export-toggle" class="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm">
+            <i class="fa-solid fa-download mr-2"></i> <span>Exportar</span> <i class="fa-solid fa-chevron-down ml-2 text-xs"></i>
+          </button>
+          <div id="export-menu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-50 border border-gray-100 py-1">
+            <a href="#" id="btn-export-xlsx" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
+              <i class="fa-solid fa-file-excel mr-2 text-emerald-600"></i> Baixar em Excel (.xlsx)
+            </a>
+            <a href="#" id="btn-export-csv-new" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
+              <i class="fa-solid fa-file-csv mr-2 text-blue-600"></i> Baixar em CSV (.csv)
+            </a>
+          </div>
+        </div>
+        <button id="btn-link-sheet" class="bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm" title="Vincular Planilha do Google Sheets para alimentar a aplicação">
+          <i class="fa-solid fa-table text-emerald-600 mr-2"></i> <span>Vincular Planilha</span>
+        </button>
         <button id="btn-new-transaction" class="bg-primary hover:bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm">
-          <i class="fa-solid fa-plus mr-2"></i> Nova
+          <i class="fa-solid fa-plus mr-2"></i> <span>Nova</span>
         </button>
       </div>
     </div>
-    <div class="overflow-x-auto">
+    
+    <!-- Active Category Filter Badge (hidden by default) -->
+    <div id="active-category-filter-bar" class="hidden px-6 py-2.5 bg-blue-50/70 border-b border-blue-100 flex items-center justify-between text-xs text-blue-900">
+      <div class="flex items-center space-x-2">
+        <i class="fa-solid fa-filter text-primary"></i>
+        <span>Filtrando por categoria: <strong id="active-category-name" class="font-bold"></strong></span>
+        <span class="bg-white text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-200" id="active-category-count">0</span>
+      </div>
+      <button type="button" id="btn-remove-cat-filter" class="text-blue-600 hover:text-blue-800 hover:underline font-medium flex items-center space-x-1">
+        <i class="fa-solid fa-xmark text-xs"></i>
+        <span>Remover filtro</span>
+      </button>
+    </div>
+
+    <div class="overflow-x-auto relative min-h-[300px]">
       <table class="w-full text-left border-collapse">
         <thead>
-          <tr class="bg-gray-50 border-b border-gray-100">
-            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Data</th>
-            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Descrição Limpa</th>
-            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Categoria</th>
-            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tipo</th>
-            <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Valor</th>
+          <tr class="bg-gray-50 border-b border-gray-200 text-xs select-none">
+            <th class="p-4 font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors th-sort group" data-col="origem" title="Clique para ordenar (1º Decrescente, 2º Crescente)">
+              <div class="flex items-center space-x-1.5">
+                <span>Origem</span>
+                <span class="sort-icon text-gray-300 group-hover:text-gray-500" data-col="origem"><i class="fa-solid fa-sort"></i></span>
+              </div>
+            </th>
+            <th class="p-4 font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors th-sort group" data-col="descricao" title="Clique para ordenar (1º Decrescente, 2º Crescente)">
+              <div class="flex items-center space-x-1.5">
+                <span>Descrição</span>
+                <span class="sort-icon text-gray-300 group-hover:text-gray-500" data-col="descricao"><i class="fa-solid fa-sort"></i></span>
+              </div>
+            </th>
+            <th class="p-4 font-semibold text-gray-600 uppercase tracking-wider relative min-w-[150px] max-w-[220px]" id="th-categoria-cell">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-1.5 cursor-pointer hover:text-gray-900 transition-colors th-sort flex-1 group" data-col="categoria" title="Clique para ordenar (1º Decrescente, 2º Crescente)">
+                  <span>Categoria</span>
+                  <span class="sort-icon text-gray-300 group-hover:text-gray-500" data-col="categoria"><i class="fa-solid fa-sort"></i></span>
+                </div>
+                <div class="relative inline-block text-left">
+                  <button type="button" id="btn-cat-filter-toggle" class="p-1.5 rounded-lg border border-transparent hover:border-gray-200 hover:bg-white text-gray-500 hover:text-primary transition-all flex items-center" title="Filtrar categorias neste contexto">
+                    <i class="fa-solid fa-chevron-down text-xs transition-transform" id="icon-cat-dropdown"></i>
+                  </button>
+                  
+                  <!-- Category Context Dropdown Menu -->
+                  <div id="category-filter-dropdown" class="hidden absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 py-2 normal-case font-normal text-xs">
+                    <div class="px-3 py-2 border-b border-gray-100 flex items-center justify-between text-gray-700 font-bold bg-gray-50/50">
+                      <span class="flex items-center"><i class="fa-solid fa-filter text-primary mr-1.5"></i> Categorias no Contexto</span>
+                      <button type="button" id="btn-dropdown-clear-cat" class="text-[11px] text-primary hover:underline font-normal">Todas</button>
+                    </div>
+                    <div class="max-h-64 overflow-y-auto py-1 divide-y divide-gray-50" id="category-filter-items">
+                      <!-- Generated dynamically -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </th>
+            <th class="p-4 font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors th-sort group" data-col="tipo" title="Clique para ordenar (1º Decrescente, 2º Crescente)">
+              <div class="flex items-center space-x-1.5">
+                <span>Tipo</span>
+                <span class="sort-icon text-gray-300 group-hover:text-gray-500" data-col="tipo"><i class="fa-solid fa-sort"></i></span>
+              </div>
+            </th>
+            <th class="p-4 font-semibold text-gray-600 uppercase tracking-wider text-right cursor-pointer hover:bg-gray-100 transition-colors th-sort group" data-col="valor" title="Clique para ordenar (1º Decrescente, 2º Crescente)">
+              <div class="flex items-center justify-end space-x-1.5">
+                <span>Valor</span>
+                <span class="sort-icon text-gray-300 group-hover:text-gray-500" data-col="valor"><i class="fa-solid fa-sort"></i></span>
+              </div>
+            </th>
+            <th class="p-4 font-semibold text-gray-600 uppercase tracking-wider text-right w-32 cursor-pointer hover:bg-gray-100 transition-colors th-sort group" data-col="data" title="Clique para ordenar (1º Decrescente, 2º Crescente)">
+              <div class="flex items-center justify-end space-x-1.5">
+                <span>Data</span>
+                <span class="sort-icon text-gray-300 group-hover:text-gray-500" data-col="data"><i class="fa-solid fa-sort"></i></span>
+              </div>
+            </th>
           </tr>
         </thead>
         <tbody class="text-sm divide-y divide-gray-100" id="transactions-body">
           <!-- Populated by JS -->
         </tbody>
       </table>
+    </div>
+  </div>
+  
+  <!-- Import Modal -->
+  <div id="import-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+        <h3 class="text-xl font-bold text-gray-800" id="import-modal-title">Importar Transações</h3>
+        <button id="btn-close-import" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+      
+      <div class="p-6 overflow-y-auto flex-1 bg-gray-50" id="import-modal-body">
+        <!-- Step 1: Upload -->
+        <div id="import-step-1" class="space-y-6">
+          <div class="bg-white p-8 rounded-xl border-2 border-dashed border-gray-300 hover:border-primary transition-colors text-center cursor-pointer" id="import-dropzone">
+            <i class="fa-solid fa-cloud-arrow-up text-5xl text-gray-400 mb-4"></i>
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Arraste seu arquivo (CSV ou XLSX)</h4>
+            <p class="text-sm text-gray-500 mb-6">ou clique para procurar no seu computador</p>
+            <input type="file" id="import-file-input" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden">
+            <button type="button" id="btn-select-file-visual" class="bg-primary hover:bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium transition-colors">
+              Selecionar Arquivo
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 text-center">O sistema tentará identificar automaticamente Data, Valor, Tipo, Descrição e Categoria.</p>
+        </div>
+
+        <!-- Step 2: Progress -->
+        <div id="import-step-2" class="hidden py-12 flex flex-col items-center justify-center">
+          <i class="fa-solid fa-circle-notch fa-spin text-5xl text-primary mb-6"></i>
+          <h4 class="text-lg font-semibold text-gray-700 mb-2" id="import-progress-title">Analisando arquivo...</h4>
+          <p class="text-gray-500 text-center max-w-md" id="import-progress-text">Extraindo colunas e normalizando descrições.</p>
+        </div>
+
+        <!-- Step 3: Review -->
+        <div id="import-step-3" class="hidden space-y-6">
+          <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+            <div>
+              <h4 class="font-semibold text-gray-800">Resumo da Importação</h4>
+              <p class="text-sm text-gray-500" id="import-summary-text">127 transações encontradas</p>
+            </div>
+            <div class="flex space-x-4 text-sm">
+              <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-emerald-500 mr-2"></span> <span id="import-count-auto">0 automáticas</span></div>
+              <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-yellow-400 mr-2"></span> <span id="import-count-ai">0 IA</span></div>
+              <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-red-400 mr-2"></span> <span id="import-count-review">0 revisar</span></div>
+            </div>
+          </div>
+          
+          <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto max-h-[50vh]">
+              <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 bg-gray-50 shadow-sm z-10">
+                  <tr class="border-b border-gray-200">
+                    <th class="p-3 text-xs font-semibold text-gray-500 uppercase">Data</th>
+                    <th class="p-3 text-xs font-semibold text-gray-500 uppercase">Descrição Limpa</th>
+                    <th class="p-3 text-xs font-semibold text-gray-500 uppercase">Categoria</th>
+                    <th class="p-3 text-xs font-semibold text-gray-500 uppercase">Origem</th>
+                    <th class="p-3 text-xs font-semibold text-gray-500 uppercase text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody class="text-sm divide-y divide-gray-100" id="import-review-body">
+                  <!-- JS populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="p-6 border-t border-gray-100 flex justify-end space-x-3 bg-white" id="import-modal-footer">
+        <button type="button" id="btn-cancel-import" class="px-5 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+        <button type="button" id="btn-confirm-import" class="hidden px-5 py-2.5 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors">
+          Salvar
+        </button>
+      </div>
     </div>
   </div>
 </div>

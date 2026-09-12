@@ -1,0 +1,480 @@
+<div id="page-planning" class="page-view hidden-page pb-12">
+  
+
+  <!-- Loading State -->
+  <div id="planning-loading" class="bg-white rounded-2xl p-12 border border-gray-200 text-center text-gray-500 shadow-sm hidden">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-primary mb-3"></i>
+    <p class="font-medium text-gray-700">Calculando planejamento anual...</p>
+    <p class="text-xs text-gray-400 dark:text-slate-400 mt-1">Consolidando dados realizados e projeções futuras</p>
+  </div>
+
+  <!-- Conteúdo Principal do Planejamento -->
+  <div id="planning-content" class="space-y-6 md:space-y-8">
+
+    <!-- 1. CARDS DE RESUMO NO TOPO -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <!-- Card 1: Receitas no Ano -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-100/60 dark:from-emerald-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-5 border border-emerald-100/50 dark:border-emerald-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Receitas no Ano</span>
+          <div class="w-8 h-8 rounded-lg bg-emerald-50/80 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm border border-emerald-100/80 dark:border-emerald-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-arrow-trend-up"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <div class="text-2xl font-bold text-gray-900 dark:text-white" id="card-planning-income-total">R$ 0,00</div>
+          <div class="mt-2 pt-2 border-t border-gray-100 dark:border-slate-700/60 flex items-center justify-end text-xs">
+            <span class="text-gray-500 dark:text-slate-400">Previsto: <strong class="text-purple-600 dark:text-purple-400" id="card-planning-income-planned">R$ 0,00</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2: Despesas no Ano -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-red-100/60 dark:from-red-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-5 border border-red-100/50 dark:border-red-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Despesas no Ano</span>
+          <div class="w-8 h-8 rounded-lg bg-red-50/80 dark:bg-red-900/50 text-red-600 dark:text-red-400 flex items-center justify-center text-sm border border-red-100/80 dark:border-red-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-arrow-trend-down"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <div class="text-2xl font-bold text-gray-900 dark:text-white" id="card-planning-expense-total">R$ 0,00</div>
+          <div class="mt-2 pt-2 border-t border-gray-100 dark:border-slate-700/60 flex items-center justify-end text-xs">
+            <span class="text-gray-500 dark:text-slate-400">Previsto: <strong class="text-purple-600 dark:text-purple-400" id="card-planning-expense-planned">R$ 0,00</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3: Saldo Acumulado (Realizado até a data presente) -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100/60 dark:from-blue-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-5 border border-blue-100/50 dark:border-blue-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Saldo Acumulado</span>
+          <div class="w-8 h-8 rounded-lg bg-blue-50/80 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm border border-blue-100/80 dark:border-blue-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-wallet"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <div class="text-2xl font-bold text-gray-900 dark:text-white" id="card-planning-current-balance">R$ 0,00</div>
+        </div>
+      </div>
+
+      <!-- Card 4: Saldo Projetado no Final do Ano -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-purple-100/60 dark:from-purple-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-5 border border-purple-200/60 dark:border-purple-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-xs font-semibold text-purple-900 dark:text-slate-400 uppercase tracking-wider">Saldo Projetado</span>
+          <div class="w-8 h-8 rounded-lg bg-purple-50/80 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 flex items-center justify-center text-sm border border-purple-200/80 dark:border-purple-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-flag-checkered"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <div class="text-2xl font-bold text-purple-900 dark:text-white" id="card-planning-projected-balance">R$ 0,00</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. SEÇÃO DE GRÁFICOS: EVOLUÇÃO E COMPOSIÇÃO COM DRILL DOWN (Removido) -->
+
+    <!-- 3. TABELA / MATRIZ FINANCEIRA ANUAL (12 MESES) -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      <!-- Cabeçalho da Tabela e Ações -->
+      <div class="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-gray-50/50 dark:!bg-slate-800">
+        <div class="flex items-center gap-4">
+          <h4 class="font-bold text-gray-800 dark:text-slate-100 flex items-center gap-2">
+            <i class="fa-solid fa-table-cells text-primary text-sm"></i>
+            <span>Matriz Financeira Anual</span>
+          </h4>
+          
+          <!-- Seletor de Ano Movido -->
+          <div class="flex items-center space-x-2 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl px-2 py-1 shadow-sm hover:border-gray-400 dark:hover:border-slate-500 transition-colors">
+            <i class="fa-regular fa-calendar text-gray-400 dark:text-slate-400 text-xs"></i>
+            <label for="planning-year-select" class="text-[10px] font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider">Ano:</label>
+            <select id="planning-year-select" class="bg-transparent text-gray-800 dark:text-white text-xs font-bold focus:outline-none cursor-pointer pr-1">
+              <option value="2026" selected>2026</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-planning-expand-all" class="text-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg transition-colors font-medium shadow-sm flex items-center gap-1.5">
+            <i class="fa-solid fa-angles-down text-[11px] text-gray-500"></i>
+            <span>Expandir Tudo</span>
+          </button>
+          <button type="button" id="btn-planning-collapse-all" class="text-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg transition-colors font-medium shadow-sm flex items-center gap-1.5">
+            <i class="fa-solid fa-angles-up text-[11px] text-gray-500"></i>
+            <span>Recolher</span>
+          </button>
+          <button type="button" id="btn-planning-new-transaction" class="bg-primary hover:bg-blue-600 text-white px-3.5 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center shadow-sm" title="Adicionar Receita ou Despesa Fixa">
+            <i class="fa-solid fa-plus mr-1.5"></i> <span>Nova</span>
+          </button>
+          <button id="btn-refresh-planning" class="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center shadow-sm" title="Atualizar dados de planejamento">
+            <i class="fa-solid fa-arrows-rotate"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra Superior de Ações em Grupo da Linha Selecionada (Adicionar ou Excluir) -->
+      <div id="planning-range-action-bar" class="hidden p-3.5 bg-gradient-to-r from-blue-50 dark:from-slate-800 via-indigo-50/50 dark:via-slate-800 to-blue-50 dark:to-slate-800 border-b border-blue-200 dark:border-slate-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-inner">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center text-sm shadow-sm shrink-0">
+            <i class="fa-solid fa-layer-group"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-gray-900 dark:text-white" id="planning-range-category-name">Despesas Fixas</span>
+              <span class="text-[10px] font-semibold text-primary dark:text-blue-300 bg-blue-100/80 dark:bg-blue-900/50 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800" id="planning-range-months-badge">Jan a Abr</span>
+              <span class="text-[10px] text-gray-500 dark:text-slate-400 font-medium" id="planning-range-count-badge">(4 meses selecionados)</span>
+            </div>
+            <p class="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5" id="planning-range-action-desc">
+              Escolha uma ação para aplicar em lote em todos os meses selecionados deste período:
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 self-end md:self-center">
+          <!-- Botão Adicionar -->
+          <button type="button" id="btn-planning-range-add" class="px-3.5 py-2 bg-primary hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-plus"></i>
+            <span>Adicionar Lançamento</span>
+          </button>
+
+          <!-- Botão Excluir -->
+          <button type="button" id="btn-planning-range-delete" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>Excluir do Período</span>
+          </button>
+
+          <!-- Botão Cancelar Seleção -->
+          <button type="button" id="btn-planning-range-cancel" class="p-2 text-gray-400 dark:text-slate-400 hover:text-gray-700 rounded-lg hover:bg-gray-200/50 transition-colors" title="Cancelar seleção em grupo">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela com rolagem horizontal e coluna fixa (Sticky Category) -->
+      <div class="overflow-x-auto relative">
+        <table class="w-full text-left border-collapse text-xs select-none min-w-[1100px]" id="planning-matrix-table">
+          <thead>
+            <tr class="bg-gray-100/80 dark:!bg-slate-800 border-b border-gray-200 text-gray-600 dark:text-slate-200 uppercase font-semibold text-[11px]">
+              <!-- Coluna Sticky: Categoria / Plano de Contas -->
+              <th class="p-3.5 sticky left-0 z-20 bg-gray-100 dark:bg-slate-800 border-r border-gray-200 w-56 min-w-[220px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
+                Categoria / Mês
+              </th>
+              
+              <!-- 12 Meses -->
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="1">
+                <div class="font-bold text-gray-700 dark:text-white">JAN</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="2">
+                <div class="font-bold text-gray-700 dark:text-white">FEV</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="3">
+                <div class="font-bold text-gray-700 dark:text-white">MAR</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="4">
+                <div class="font-bold text-gray-700 dark:text-white">ABR</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="5">
+                <div class="font-bold text-gray-700 dark:text-white">MAI</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="6">
+                <div class="font-bold text-gray-700 dark:text-white">JUN</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="7">
+                <div class="font-bold text-gray-700 dark:text-white">JUL</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="8">
+                <div class="font-bold text-gray-700 dark:text-white">AGO</div>
+                <div class="text-[9px] font-medium text-gray-400 dark:text-slate-400 uppercase tracking-tighter month-badge">Realizado</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="9">
+                <div class="font-bold text-primary">SET</div>
+                <div class="text-[9px] font-semibold text-primary uppercase tracking-tighter month-badge">Atual</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="10">
+                <div class="font-bold text-purple-700">OUT</div>
+                <div class="text-[9px] font-medium text-purple-600 uppercase tracking-tighter month-badge">Previsto</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="11">
+                <div class="font-bold text-purple-700">NOV</div>
+                <div class="text-[9px] font-medium text-purple-600 uppercase tracking-tighter month-badge">Previsto</div>
+              </th>
+              <th class="p-2.5 text-right w-24 min-w-[95px] border-r border-gray-200/60 planning-th-month" data-month="12">
+                <div class="font-bold text-purple-700">DEZ</div>
+                <div class="text-[9px] font-medium text-purple-600 uppercase tracking-tighter month-badge">Previsto</div>
+              </th>
+
+              <!-- Coluna Total Anual -->
+              <th class="p-3.5 text-right w-28 min-w-[110px] bg-gray-100 dark:bg-slate-800 font-bold text-gray-800 border-l border-gray-200">
+                TOTAL ANUAL
+              </th>
+            </tr>
+          </thead>
+          <tbody id="planning-matrix-body" class="divide-y divide-gray-100 dark:divide-slate-700 text-gray-700 font-mono">
+            <!-- Linhas geradas dinamicamente via JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Rodapé da Tabela com Dica e Resumo -->
+      <div class="p-4 bg-gray-50 dark:!bg-slate-800 border-t border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500 dark:text-slate-300">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-info text-primary"></i>
+          <span>Clique em qualquer célula de mês ou categoria para visualizar os lançamentos correspondentes.</span>
+        </div>
+        <div class="text-gray-400 dark:text-slate-400">
+          Atualização dinâmica em tempo real
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal de Detalhe de Transações da Célula / Categoria / Mês -->
+  <div id="modal-planning-transactions" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-blue-50 text-primary flex items-center justify-center text-base border border-blue-100" id="modal-planning-tx-icon">
+            <i class="fa-solid fa-list-check"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-gray-800" id="modal-planning-tx-title">Transações Detalhadas</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-300" id="modal-planning-tx-subtitle">Lançamentos que compõem este valor</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-planning-tx" class="text-gray-400 dark:text-slate-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Resumo rápido no modal -->
+      <div class="px-5 py-3 bg-blue-50/40 border-b border-blue-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-4">
+          <span>Realizado: <strong class="text-emerald-700" id="modal-planning-tx-realized">R$ 0,00</strong></span>
+          <span>Previsto: <strong class="text-purple-700" id="modal-planning-tx-planned">R$ 0,00</strong></span>
+        </div>
+        <div class="font-bold text-gray-900">
+          Total: <span id="modal-planning-tx-total">R$ 0,00</span>
+        </div>
+      </div>
+
+      <!-- Tabela de Lançamentos -->
+      <div class="overflow-y-auto flex-1 p-0">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead class="bg-gray-50 sticky top-0 border-b border-gray-200 font-semibold text-gray-500 uppercase">
+            <tr>
+              <th class="p-3">Data</th>
+              <th class="p-3">Descrição</th>
+              <th class="p-3">Categoria</th>
+              <th class="p-3">Tipo</th>
+              <th class="p-3 text-center">Status</th>
+              <th class="p-3 text-right">Valor</th>
+            </tr>
+          </thead>
+          <tbody id="modal-planning-tx-body" class="divide-y divide-gray-100 dark:divide-slate-700">
+            <!-- Renderizado via JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+        <button type="button" id="btn-close-planning-tx-footer" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-semibold transition-colors">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Linha de Categoria (Planejamento) -->
+  <div id="modal-planning-new-row" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-fade-in">
+      <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-blue-50/50">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center text-lg shadow-sm">
+            <i class="fa-solid fa-plus"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-gray-800">Nova Linha de Planejamento</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-300">Adicione uma categoria para planejar até o fim do ano</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-planning-new-row" class="text-gray-400 dark:text-slate-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="form-planning-new-row" class="p-5 space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Macrocategoria</label>
+          <select id="modal-new-row-macro" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm">
+            <option value="Fixas">Despesas Fixas</option>
+            <option value="Variáveis Essenciais">Despesas Variáveis Essenciais</option>
+            <option value="Discricionárias">Despesas Discricionárias</option>
+            <option value="Receitas">Receitas</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Categoria (Nome da Linha)</label>
+          <input type="text" id="modal-new-row-cat" list="modal-new-row-cat-list" required placeholder="Ex: Telefone, Internet, Salário" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm">
+          <datalist id="modal-new-row-cat-list"></datalist>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Descrição</label>
+          <input type="text" id="modal-new-row-desc" required placeholder="Ex: Vivo Fibra" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Valor Mensal (R$)</label>
+          <input type="number" step="0.01" min="0.01" id="modal-new-row-val" required placeholder="0,00" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm font-semibold">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-gray-100">
+          <button type="button" id="btn-cancel-planning-new-row" class="px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button type="submit" id="btn-submit-planning-new-row" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-check"></i>
+            <span>Criar Linha</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Adicionar Lançamento em Grupo / Lote para o Período Selecionado -->
+  <div id="modal-planning-range-add" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-fade-in">
+      <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-blue-50/50">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center text-lg shadow-sm">
+            <i class="fa-solid fa-calendar-plus"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-gray-800">Adicionar Lançamento em Grupo</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-300" id="modal-range-add-subtitle">Adicione o mesmo lançamento nos meses selecionados</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-range-add" class="text-gray-400 dark:text-slate-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="form-planning-range-add" class="p-5 space-y-4">
+        <!-- Info da Linha e Meses -->
+        <div class="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-xs flex items-center justify-between">
+          <div>
+            <span class="text-gray-500 block">Linha / Categoria:</span>
+            <strong class="text-primary font-semibold text-sm" id="modal-range-add-cat-label">Moradia</strong>
+          </div>
+          <div class="text-right">
+            <span class="text-gray-500 block">Meses selecionados:</span>
+            <strong class="text-gray-800 font-semibold" id="modal-range-add-months-label">Jan a Abr (4 meses)</strong>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Descrição do Lançamento</label>
+          <input type="text" id="modal-range-add-desc" required placeholder="Ex: Conta de Telefone, Internet, Condomínio" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Valor por Mês (R$)</label>
+            <input type="number" step="0.01" min="0.01" id="modal-range-add-val" required placeholder="0,00" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm font-semibold">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Dia do Vencimento</label>
+            <input type="number" min="1" max="31" value="10" id="modal-range-add-day" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Conta / Origem</label>
+          <input type="text" id="modal-range-add-origem" value="Conta Corrente" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-gray-100">
+          <button type="button" id="btn-cancel-range-add" class="px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button type="submit" id="btn-submit-range-add" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-check"></i>
+            <span>Confirmar Lançamentos</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Excluir Lançamentos em Grupo do Período Selecionado -->
+  <div id="modal-planning-range-delete" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col max-h-[85vh]">
+      <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-rose-50/50">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-lg border border-rose-200">
+            <i class="fa-solid fa-trash-can"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-gray-800">Excluir Lançamentos do Período</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-300" id="modal-range-delete-subtitle">Remova transações na linha e meses selecionados</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-range-delete" class="text-gray-400 dark:text-slate-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-4 flex-1">
+        <!-- Info da Seleção -->
+        <div class="bg-rose-50/50 border border-rose-100 rounded-xl p-3 text-xs flex items-center justify-between">
+          <div>
+            <span class="text-gray-500 block">Linha afetada:</span>
+            <strong class="text-rose-800 font-semibold text-sm" id="modal-range-delete-cat-label">Despesas Fixas</strong>
+          </div>
+          <div class="text-right">
+            <span class="text-gray-500 block">Período:</span>
+            <strong class="text-gray-800 font-semibold" id="modal-range-delete-months-label">Jan a Abr</strong>
+          </div>
+        </div>
+
+        <p class="text-xs text-gray-600" id="modal-range-delete-help-text">
+          Selecione se deseja excluir todos os lançamentos desta linha ou escolher itens específicos:
+        </p>
+
+        <!-- Lista de Lançamentos encontrados no período -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden">
+          <div class="p-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between text-xs font-medium text-gray-600">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" id="check-delete-all-range" checked class="rounded text-rose-600 focus:ring-rose-500">
+              <span class="font-bold">Selecionar Todos (<span id="range-delete-items-count">0</span>)</span>
+            </label>
+            <span class="text-gray-500 text-[11px]" id="range-delete-total-value">Total: R$ 0,00</span>
+          </div>
+          <div class="max-h-60 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-700 text-xs" id="range-delete-tx-list">
+            <!-- Preenchido via JS -->
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+        <button type="button" id="btn-cancel-range-delete" class="px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+          Cancelar
+        </button>
+        <button type="button" id="btn-confirm-range-delete" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5">
+          <i class="fa-solid fa-trash-can"></i>
+          <span>Excluir Selecionados</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>

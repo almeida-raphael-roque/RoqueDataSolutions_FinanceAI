@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <meta charset="utf-8">
-    <title>Finance Intelligence</title>
+    <title>FINANCE.BASIC</title>
     <?!= include('Styles'); ?>
   </head>
   <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
@@ -14,7 +14,7 @@
         <header class="bg-white shadow-sm z-10 p-5 flex flex-wrap gap-4 justify-between items-center border-b border-gray-200">
           <div class="flex items-center">
             <h2 class="text-xl font-semibold text-gray-800 mr-6" id="page-title">Visão Geral</h2>
-            <div class="hidden md:flex items-center space-x-2">
+            <div class="hidden md:flex items-center space-x-2" id="global-filters">
               <select id="filter-month" class="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-primary focus:border-primary block p-2">
                 <option value="all">Todos os Meses</option>
                 <option value="1">Janeiro</option>
@@ -40,20 +40,185 @@
               </select>
             </div>
           </div>
-          <div class="flex items-center space-x-4">
-            <button class="text-gray-400 hover:text-gray-600 transition-colors">
-              <i class="fa-regular fa-bell text-lg"></i>
-            </button>
-            <div class="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold border border-primary/20">
-              U
-            </div>
-          </div>
         </header>
 
         <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6 md:p-8" id="main-content">
           <?!= include('Dashboard'); ?>
+          <?!= include('Planning_page'); ?>
           <?!= include('Transactions_page'); ?>
+          <?!= include('Categories_page'); ?>
         </main>
+      </div>
+    </div>
+    
+    <!-- Modal Nova Transação / Receita ou Despesa Fixa -->
+    <div id="modal-transaction" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 m-auto">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900" id="modal-tx-title">Nova Transação</h3>
+            <p class="text-xs text-gray-500 mt-0.5" id="modal-tx-subtitle">Cadastre uma receita ou despesa no seu controle financeiro.</p>
+          </div>
+          <button type="button" id="btn-close-modal-tx" class="text-gray-400 hover:text-gray-600 p-1 text-lg rounded-lg transition-colors">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <form id="form-transaction" class="space-y-4">
+          <!-- Tipo: Entrada ou Saída -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Lançamento</label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="cursor-pointer">
+                <input type="radio" name="tx-tipo-radio" value="Saída" checked class="peer sr-only">
+                <div class="p-2.5 text-center rounded-xl border border-gray-200 peer-checked:border-red-500 peer-checked:bg-red-50 peer-checked:text-red-700 font-semibold text-xs flex items-center justify-center gap-2 transition-all">
+                  <i class="fa-solid fa-arrow-down text-red-500"></i>
+                  <span>Saída (Despesa)</span>
+                </div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="tx-tipo-radio" value="Entrada" class="peer sr-only">
+                <div class="p-2.5 text-center rounded-xl border border-gray-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 peer-checked:text-emerald-700 font-semibold text-xs flex items-center justify-center gap-2 transition-all">
+                  <i class="fa-solid fa-arrow-up text-emerald-500"></i>
+                  <span>Entrada (Receita)</span>
+                </div>
+              </label>
+            </div>
+            <!-- Campo oculto para manter compatibilidade com #t-tipo -->
+            <input type="hidden" id="t-tipo" value="Saída">
+          </div>
+
+          <!-- Repetição / Recorrência Fixa -->
+          <div id="group-recurrence">
+            <label class="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
+              <span>Frequência / Fixa</span>
+              <span class="text-[11px] font-normal text-primary" id="recurrence-badge">Recorrência</span>
+            </label>
+            <select id="t-repeticao" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm bg-white">
+              <option value="unica">Apenas na data selecionada (Lançamento Único)</option>
+              <option value="ano_todo" selected>Repetir em todos os 12 meses do ano (Fixa Anual - Jan a Dez)</option>
+              <option value="restante_ano">Repetir deste mês até Dezembro</option>
+            </select>
+            <p class="text-[11px] text-gray-500 mt-1 flex items-center gap-1" id="recurrence-hint">
+              <i class="fa-solid fa-circle-info text-primary text-[10px]"></i>
+              <span>Ideal para Salários, Aluguel, Assinaturas e outras receitas ou despesas fixas.</span>
+            </p>
+          </div>
+
+          <!-- Origem -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Origem (Conta/Cartão)</label>
+            <input type="text" id="t-origem" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm" placeholder="Ex: Conta Corrente / Nubank / Itaú">
+          </div>
+
+          <!-- Data e Valor lado a lado -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Data / Dia</label>
+              <input type="date" id="t-data" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
+              <input type="number" step="0.01" min="0.01" id="t-valor" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm font-semibold" placeholder="0,00">
+            </div>
+          </div>
+
+          <!-- Descrição -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+            <div class="flex space-x-2">
+              <input type="text" id="t-descricao" required class="flex-1 px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm" placeholder="Ex: Aluguel Residencial, Salário Mensal, Internet">
+              <button type="button" id="btn-ai-clean" class="bg-gray-100 text-primary hover:bg-gray-200 px-3.5 rounded-lg transition-colors" title="Limpar e sugerir com IA">
+                <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+              </button>
+            </div>
+            <p class="text-[11px] text-gray-400 mt-1">Ex: Aluguel, Salário, Internet, Condomínio, etc.</p>
+          </div>
+
+          <!-- Categoria -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-sm font-medium text-gray-700">Categoria</label>
+              <button type="button" id="btn-quick-add-category" class="text-xs text-primary hover:text-blue-700 font-semibold flex items-center gap-1 transition-colors">
+                <i class="fa-solid fa-plus text-[11px]"></i>
+                <span>Acrescentar Categoria</span>
+              </button>
+            </div>
+            <select id="t-categoria" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm bg-white">
+              <option value="__add_new__" class="font-semibold text-primary">+ Acrescentar nova categoria...</option>
+              <optgroup label="Despesas Fixas">
+                <option value="Moradia">Moradia</option>
+                <option value="Despesas Fixas">Despesas Fixas</option>
+                <option value="Saúde">Saúde</option>
+                <option value="Educação">Educação</option>
+              </optgroup>
+              <optgroup label="Variáveis / Essenciais">
+                <option value="Alimentação">Alimentação</option>
+                <option value="Transporte">Transporte</option>
+              </optgroup>
+              <optgroup label="Discricionárias">
+                <option value="Lazer">Lazer</option>
+                <option value="Viagem">Viagem</option>
+                <option value="Compras">Compras</option>
+                <option value="Outros">Outros</option>
+              </optgroup>
+              <optgroup label="Receitas">
+                <option value="Salário">Salário</option>
+                <option value="Renda">Renda</option>
+                <option value="Investimentos">Investimentos</option>
+              </optgroup>
+              <optgroup label="Outros">
+                <option value="Transferência">Transferência</option>
+                <option value="DESCONHECIDO">DESCONHECIDO</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- Painel para Acrescentar Nova Categoria diretamente -->
+          <div id="quick-category-panel" class="hidden bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-primary flex items-center gap-1.5">
+                <i class="fa-solid fa-plus-circle"></i>
+                <span>Acrescentar Nova Categoria</span>
+              </span>
+              <button type="button" id="btn-cancel-quick-category" class="text-gray-400 hover:text-gray-600 text-xs p-1">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Nome da Categoria</label>
+              <input type="text" id="quick-cat-name" placeholder="Ex: Cursos, Pet Shop, Freelance, Assinaturas" class="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Perfil da Categoria</label>
+              <select id="quick-cat-profile" class="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                <option value="Despesa Fixa">Despesa Fixa</option>
+                <option value="Despesa Variável">Despesa Variável</option>
+                <option value="Despesa Discricionária" selected>Despesa Discricionária</option>
+                <option value="Receita Fixa">Receita Fixa</option>
+                <option value="Receita Variável">Receita Variável</option>
+                <option value="Transferência">Transferência</option>
+              </select>
+            </div>
+            <div class="flex justify-end gap-2 pt-1">
+              <button type="button" id="btn-cancel-quick-cat" class="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-200/60 rounded-lg font-medium transition-colors">
+                Cancelar
+              </button>
+              <button type="button" id="btn-save-quick-category" class="px-3.5 py-1.5 bg-primary hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors flex items-center shadow-xs">
+                <i class="fa-solid fa-check mr-1.5"></i> <span>Criar e Selecionar</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex justify-end space-x-3 pt-4 border-t border-gray-100 mt-5">
+            <button type="button" id="btn-cancel-modal" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">
+              Cancelar
+            </button>
+            <button type="submit" id="btn-save-transaction" class="px-5 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm">
+              <span>Salvar Lançamento</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
     

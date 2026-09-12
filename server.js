@@ -32,6 +32,22 @@ const server = http.createServer((req, res) => {
       res.writeHead(500);
       res.end('Error loading Index.html');
     }
+  } else if (req.url.startsWith('/assets/')) {
+    try {
+      const filePath = path.join(__dirname, req.url);
+      const ext = path.extname(filePath).toLowerCase();
+      let contentType = 'application/octet-stream';
+      if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+      else if (ext === '.svg') contentType = 'image/svg+xml';
+      
+      const fileData = fs.readFileSync(filePath);
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(fileData);
+    } catch(e) {
+      res.writeHead(404);
+      res.end('Not found');
+    }
   } else {
     res.writeHead(404);
     res.end('Not found');

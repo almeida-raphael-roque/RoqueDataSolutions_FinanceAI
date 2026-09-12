@@ -3,6 +3,16 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
   
+  :root {
+    --color-surface: 255 255 255;      /* #ffffff */
+    --color-background: 248 250 252;   /* #f8fafc */
+  }
+  
+  html.dark {
+    --color-surface: 30 41 59;         /* #1e293b (slate-800) */
+    --color-background: 15 23 42;      /* #0f172a (slate-900) */
+  }
+
   body {
     font-family: 'Inter', sans-serif;
   }
@@ -28,13 +38,82 @@
   }
   
   .glass-card {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(var(--color-surface), 0.95);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+  }
+
+  /* Efeito de destaque para seleção de intervalo na matriz financeira anual */
+  .planning-cell-selected-endpoint {
+    background-color: #dbeafe !important; /* bg-blue-100 */
+    box-shadow: inset 0 0 0 2px #0284c7 !important;
+    font-weight: 700 !important;
+    color: #0369a1 !important;
+    position: relative;
+  }
+  .planning-cell-selected-range {
+    background-color: #eff6ff !important; /* bg-blue-50 */
+    box-shadow: inset 0 0 0 1.5px rgba(2, 132, 199, 0.4) !important;
+    color: #0369a1 !important;
+  }
+  .planning-row-active-range {
+    background-color: rgba(239, 246, 255, 0.5) !important;
+  }
+
+  /* Dark mode global overrides to avoid editing thousands of HTML classes */
+  html.dark body {
+    background-color: rgb(var(--color-background)) !important;
+    color: #f1f5f9 !important; /* slate-100 */
+  }
+  html.dark .bg-white {
+    background-color: rgb(var(--color-surface)) !important;
+  }
+  html.dark .bg-gray-50 {
+    background-color: rgb(var(--color-background)) !important;
+  }
+  html.dark .bg-gray-100 {
+    background-color: rgb(var(--color-surface)) !important;
+  }
+  html.dark .bg-gray-200 {
+    background-color: #334155 !important;
+  }
+  html.dark .text-gray-900, html.dark .text-gray-800, html.dark .text-slate-900, html.dark .text-slate-800 {
+    color: #f8fafc !important;
+  }
+  html.dark .text-gray-700 {
+    color: #e2e8f0 !important;
+  }
+  html.dark .text-gray-600 {
+    color: #cbd5e1 !important;
+  }
+  html.dark .text-gray-500 {
+    color: #94a3b8 !important;
+  }
+  html.dark .border-gray-100, html.dark .border-gray-200, html.dark .border-gray-300, html.dark .border-white {
+    border-color: #334155 !important;
+  }
+  html.dark .shadow-sm, html.dark .shadow, html.dark .shadow-md {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
+  }
+  
+  /* Make sure sidebar doesn't get messed up */
+  html.dark aside, html.dark aside .bg-gray-800 {
+    background-color: #020617 !important; /* slate-950 */
+  }
+  html.dark aside .text-gray-400 {
+    color: #94a3b8 !important;
+  }
+  
+  /* Inputs in dark mode */
+  html.dark input, html.dark select, html.dark textarea {
+    background-color: rgb(var(--color-surface)) !important;
+    color: #f1f5f9 !important;
+    border-color: #334155 !important;
   }
 </style>
 <script>
   tailwind.config = {
+    darkMode: 'class',
     theme: {
       extend: {
         fontFamily: {
@@ -46,8 +125,8 @@
           success: '#10b981',
           danger: '#ef4444',
           warning: '#f59e0b',
-          surface: '#ffffff',
-          background: '#f8fafc'
+          surface: 'rgb(var(--color-surface) / <alpha-value>)',
+          background: 'rgb(var(--color-background) / <alpha-value>)'
         }
       }
     }

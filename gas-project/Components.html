@@ -1,9 +1,17 @@
 <aside class="w-64 bg-gray-900 text-white flex flex-col h-full flex-shrink-0">
-  <div class="p-6 flex items-center space-x-3 border-b border-gray-800">
-    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg">
-      <i class="fa-solid fa-chart-pie text-white text-sm"></i>
+  <div class="p-6 flex items-center justify-center border-b border-gray-800">
+    <div id="company-logo-container" class="flex items-center space-x-3 w-full justify-center">
+      <!-- A logo será carregada da pasta assets -->
+      <img src="assets/logo.png" alt="Logo" class="max-w-[150px] max-h-[40px] hidden object-contain" id="company-logo-img" onerror="this.style.display='none'; document.getElementById('company-logo-fallback').classList.remove('hidden');" onload="this.classList.remove('hidden'); document.getElementById('company-logo-fallback').classList.add('hidden');">
+      
+      <!-- Fallback em texto exibido enquanto a imagem não estiver na pasta assets -->
+      <div id="company-logo-fallback" class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg">
+          <i class="fa-solid fa-coins text-white text-sm"></i>
+        </div>
+        <span class="text-lg font-bold tracking-wide">FINANCE<span class="text-primary">.BASIC</span></span>
+      </div>
     </div>
-    <span class="text-lg font-bold tracking-wide">FINANCE<span class="text-primary">.AI</span></span>
   </div>
   
   <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
@@ -14,9 +22,32 @@
       <span class="font-medium text-sm">Visão Geral</span>
     </a>
     
+    <a href="#" data-target="page-planning" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
+      <i class="fa-solid fa-calendar-days w-5"></i>
+      <span class="font-medium text-sm">Planejamento</span>
+    </a>
+    
     <a href="#" data-target="page-transactions" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
       <i class="fa-solid fa-list-ul w-5"></i>
       <span class="font-medium text-sm">Transações</span>
     </a>
+    
+    <a href="#" data-target="page-categories" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
+      <i class="fa-solid fa-tags w-5"></i>
+      <span class="font-medium text-sm">Categorias e Regras</span>
+    </a>
   </nav>
+
+  <!-- Dark Mode Toggle Section -->
+  <div class="p-4 border-t border-gray-800">
+    <button id="theme-toggle" class="w-full flex items-center justify-between px-4 py-2.5 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors group">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid fa-moon w-5 text-gray-400 group-hover:text-primary transition-colors" id="theme-toggle-icon"></i>
+        <span class="font-medium text-sm" id="theme-toggle-text">Modo Claro</span>
+      </div>
+      <div class="w-8 h-4 bg-gray-700 rounded-full relative transition-colors shadow-inner" id="theme-toggle-track">
+        <div class="w-3 h-3 bg-gray-400 rounded-full absolute top-0.5 left-1 transition-all" id="theme-toggle-thumb"></div>
+      </div>
+    </button>
+  </div>
 </aside>
