@@ -22,8 +22,10 @@ jobs:
         run: npm install -g @google/clasp
 
       - name: Configurar Autenticação do Clasp
+        env:
+          CLASP_TOKEN: ${{ secrets.CLASP_TOKEN }}
         run: |
-          echo "${{ secrets.CLASP_TOKEN }}" > ~/.clasprc.json
+          echo "$CLASP_TOKEN" > ~/.clasprc.json
           
       - name: Enviar o código para o Google Apps Script
         working-directory: ./gas-project
