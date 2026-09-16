@@ -1,0 +1,266 @@
+<div id="page-spending-control" class="page-view hidden-page space-y-6">
+
+  <!-- Header Section (Tabs) -->
+  <div class="flex flex-col md:flex-row md:items-center justify-start gap-4">
+    <!-- Tabs -->
+    <div class="flex bg-gray-100 dark:bg-[#151521] rounded-full border border-gray-200 dark:border-gray-800 p-1.5 w-fit shadow-inner">
+      <button id="sc-tab-tracking" class="flex items-center gap-2 px-6 py-2 text-sm font-bold rounded-full bg-primary text-white shadow-md transition-all">
+        <i class="fa-solid fa-chart-pie"></i> Acompanhamento
+      </button>
+      <button id="sc-tab-goals" class="flex items-center gap-2 px-6 py-2 text-sm font-bold rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all">
+        <i class="fa-solid fa-bullseye"></i> Objetivos
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab 1: Acompanhamento -->
+  <div id="sc-view-tracking" class="space-y-6">
+    
+    <!-- Top summary cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <!-- Entradas -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-100/60 dark:from-emerald-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-4 border border-emerald-100/50 dark:border-emerald-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Entradas</span>
+          <div class="w-7 h-7 rounded-lg bg-emerald-50/80 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-[10px] border border-emerald-100/80 dark:border-emerald-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-arrow-trend-up"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <span id="sc-summary-incomes" class="text-lg font-bold text-gray-900 dark:text-white">R$ 0,00</span>
+        </div>
+      </div>
+
+      <!-- Saídas -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-red-100/60 dark:from-red-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-4 border border-red-100/50 dark:border-red-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Saídas</span>
+          <div class="w-7 h-7 rounded-lg bg-red-50/80 dark:bg-red-900/50 text-red-600 dark:text-red-400 flex items-center justify-center text-[10px] border border-red-100/80 dark:border-red-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-arrow-trend-down"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <span id="sc-summary-expenses" class="text-lg font-bold text-gray-900 dark:text-white">R$ 0,00</span>
+        </div>
+      </div>
+
+      <!-- Economia -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100/60 dark:from-blue-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-4 border border-blue-100/50 dark:border-blue-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Economia</span>
+          <div class="w-7 h-7 rounded-lg bg-blue-50/80 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] border border-blue-100/80 dark:border-blue-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-wallet"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <span id="sc-summary-savings" class="text-lg font-bold text-gray-900 dark:text-white">R$ 0,00</span>
+        </div>
+      </div>
+
+      <!-- Meta Mensal -->
+      <div class="bg-surface bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-purple-100/60 dark:from-purple-900/40 via-surface to-surface dark:via-slate-800 dark:to-slate-800 rounded-2xl p-4 border border-purple-100/50 dark:border-purple-800/50 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+          <span class="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider leading-tight">Meta Mensal</span>
+          <div class="w-7 h-7 rounded-lg bg-purple-50/80 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 flex items-center justify-center text-[10px] border border-purple-100/80 dark:border-purple-800/50 backdrop-blur-sm">
+            <i class="fa-solid fa-bullseye"></i>
+          </div>
+        </div>
+        <div class="relative z-10">
+          <span id="sc-summary-goal" class="text-lg font-bold text-gray-900 dark:text-white">R$ 0,00</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Connection to Objetivos -->
+    <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h4 class="text-sm font-bold text-gray-800">Evolução dos Objetivos neste mês</h4>
+          <p class="text-xs text-gray-500 mt-0.5">Dinheiro economizado sendo direcionado para seus objetivos</p>
+        </div>
+        <div class="text-right hidden sm:block">
+          <p class="text-xs font-semibold text-gray-500 uppercase">Patrimônio Alvo</p>
+          <p id="sc-tracking-total-goals" class="text-sm font-bold text-gray-800">R$ 0,00</p>
+        </div>
+      </div>
+      
+      <div class="mb-2 flex justify-between text-sm font-medium">
+        <span class="text-gray-700">A economizar: <span id="sc-tracking-saved-val" class="font-bold text-primary">R$ 0,00</span> de <span id="sc-tracking-goal-val">R$ 0,00</span></span>
+        <div class="flex items-center gap-3">
+          <span id="sc-summary-status" class="text-[11px] font-bold px-2 py-0.5 bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400 rounded">Calculando...</span>
+          <span id="sc-tracking-progress-text" class="text-primary font-bold">0%</span>
+        </div>
+      </div>
+      <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+        <div id="sc-tracking-progress-bar" class="bg-primary h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Tables for Entradas and Saídas -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+        <h4 class="font-bold text-gray-800 flex items-center gap-2">
+          <i class="fa-solid fa-arrow-down text-red-500"></i> Despesas
+        </h4>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm whitespace-nowrap">
+          <thead class="text-xs text-gray-500 bg-gray-50 uppercase border-b border-gray-100">
+            <tr>
+              <th class="px-5 py-3 font-semibold">Categoria</th>
+              <th class="px-5 py-3 font-semibold text-right">Média Histórica</th>
+              <th class="px-5 py-3 font-semibold text-right">Meta</th>
+              <th class="px-5 py-3 font-semibold text-right">Realizado</th>
+              <th class="px-5 py-3 font-semibold text-right">Projeção</th>
+              <th class="px-5 py-3 font-semibold text-center">Status</th>
+              <th class="px-5 py-3 font-semibold">Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="sc-expenses-tbody" class="divide-y divide-gray-100">
+            <!-- Rendered via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-6">
+      <div class="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+        <h4 class="font-bold text-gray-800 flex items-center gap-2">
+          <i class="fa-solid fa-arrow-up text-emerald-500"></i> Receitas
+        </h4>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm whitespace-nowrap">
+          <thead class="text-xs text-gray-500 bg-gray-50 uppercase border-b border-gray-100">
+            <tr>
+              <th class="px-5 py-3 font-semibold">Categoria</th>
+              <th class="px-5 py-3 font-semibold text-right">Média Histórica</th>
+              <th class="px-5 py-3 font-semibold text-right">Meta</th>
+              <th class="px-5 py-3 font-semibold text-right">Realizado</th>
+              <th class="px-5 py-3 font-semibold text-right">Projeção</th>
+              <th class="px-5 py-3 font-semibold text-center">Status</th>
+              <th class="px-5 py-3 font-semibold">Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="sc-incomes-tbody" class="divide-y divide-gray-100">
+            <!-- Rendered via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Tab 2: Objetivos -->
+  <div id="sc-view-goals" class="hidden space-y-6">
+    
+    <div class="flex flex-col md:flex-row gap-6">
+      
+      <!-- Summary Box -->
+      <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm md:w-1/3 flex flex-col justify-center">
+        <div class="mb-4">
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Patrimônio de Objetivos</span>
+          <span id="sc-goals-total-target" class="text-3xl font-bold text-gray-900">R$ 0,00</span>
+        </div>
+        <div>
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Meta de Economia Mensal</span>
+          <span id="sc-goals-total-monthly" class="text-xl font-bold text-primary">R$ 0,00</span>
+        </div>
+      </div>
+
+      <!-- Educational Info -->
+      <div class="bg-blue-50/70 border border-blue-100 rounded-xl p-5 md:w-2/3 flex gap-4 items-start">
+        <div class="bg-blue-100 text-primary p-2.5 rounded-lg">
+          <i class="fa-solid fa-lightbulb"></i>
+        </div>
+        <div>
+          <h4 class="font-bold text-blue-900 text-sm mb-1">Transforme seus objetivos em realidade</h4>
+          <p class="text-xs text-blue-800/80 leading-relaxed">
+            Considere criar "caixinhas" equivalentes aos seus objetivos em sua instituição financeira (como as Caixinhas do Nubank). 
+            Assim, você pode separar fisicamente o dinheiro destinado a cada objetivo e acompanhar sua evolução também fora do aplicativo. O dinheiro economizado a cada mês no <b>Acompanhamento</b> será distribuído automaticamente entre eles ao fim do mês!
+          </p>
+        </div>
+      </div>
+      
+    </div>
+
+    <!-- Objectives Grid Header -->
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-800">Seus Objetivos</h3>
+      <button id="sc-btn-add-goal" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+        <i class="fa-solid fa-plus"></i> Novo Objetivo
+      </button>
+    </div>
+
+    <!-- Objectives Grid -->
+    <div id="sc-goals-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <!-- Rendered via JS -->
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Modal: Editar Meta Categoria -->
+<div id="modal-sc-category-target" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+    <h3 class="text-lg font-bold text-gray-900 mb-1" id="sc-cat-target-title">Definir Meta</h3>
+    <p class="text-xs text-gray-500 mb-4" id="sc-cat-target-subtitle">Categoria: Alimentação</p>
+    
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Nova Meta (R$)</label>
+      <input type="number" step="0.01" min="0" id="sc-cat-target-input" class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm font-semibold">
+      <p class="text-[11px] text-gray-400 mt-1">Média histórica: <span id="sc-cat-target-avg">R$ 0,00</span></p>
+    </div>
+
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" id="btn-sc-close-cat-target" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+      <button type="button" id="btn-sc-save-cat-target" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors">Salvar Meta</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar/Adicionar Objetivo -->
+<div id="modal-sc-goal" class="hidden fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+    <div class="flex justify-between items-start mb-4">
+      <h3 class="text-lg font-bold text-gray-900" id="sc-goal-modal-title">Novo Objetivo</h3>
+      <button type="button" id="btn-sc-close-goal-x" class="text-gray-400 hover:text-gray-600">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    
+    <form id="form-sc-goal" class="space-y-4">
+      <input type="hidden" id="sc-goal-id">
+      
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Objetivo</label>
+        <input type="text" id="sc-goal-name" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm" placeholder="Ex: Viagem, Reserva de Emergência">
+      </div>
+      
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Meta (R$)</label>
+          <input type="number" step="0.01" min="0" id="sc-goal-target" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm font-semibold" placeholder="Ex: 5000">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Acumulado (R$)</label>
+          <input type="number" step="0.01" min="0" id="sc-goal-current" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm font-semibold" placeholder="Ex: 0">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Aporte Mensal Planejado (R$)</label>
+        <input type="number" step="0.01" min="0" id="sc-goal-monthly" required class="w-full px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm font-semibold" placeholder="Ex: 300">
+      </div>
+
+      <div class="flex justify-between pt-4 border-t border-gray-100 mt-2">
+        <button type="button" id="btn-sc-delete-goal" class="hidden px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors">Excluir</button>
+        <div class="flex gap-2 ml-auto">
+          <button type="button" id="btn-sc-close-goal" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+          <button type="submit" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors">Salvar</button>
+        </div>
+      </div>
+    </form>
+  </div>

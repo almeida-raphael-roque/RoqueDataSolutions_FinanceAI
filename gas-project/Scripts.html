@@ -65,6 +65,9 @@
     } catch(e) {
       console.warn("Could not save categories to storage:", e);
     }
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run.saveGlobalCategories(GLOBAL_CATEGORIES);
+    }
   }
 
   let GLOBAL_RULES = [
@@ -97,19 +100,25 @@
 
   // Global Macro Category function
   function getMacroCategory(cat, desc) {
-    cat = (cat || '').toLowerCase();
-    desc = (desc || '').toLowerCase();
+    cat = String(cat || '').toLowerCase().trim();
+    desc = String(desc || '').toLowerCase().trim();
+    
+    if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES)) {
+      const existing = GLOBAL_CATEGORIES.find(c => String(c.name).toLowerCase().trim() === cat);
+      if (existing && existing.profile) {
+        if (existing.profile.includes('Fixa')) return 'Fixas';
+        if (existing.profile.includes('Variável')) return 'Variáveis Essenciais';
+        return 'Discricionárias';
+      }
+    }
     
     if (cat.includes('moradia') || desc.includes('aluguel') || desc.includes('internet') || desc.includes('condomínio') || cat.includes('educação') || cat.includes('telefone') || cat.includes('celular') || desc.includes('vivo') || desc.includes('claro') || desc.includes('tim')) return 'Fixas';
-    
-    if (desc.includes('energia') || desc.includes('água') || desc.includes('gás') || desc.includes('luz') || cat.includes('saúde') || desc.includes('mercado') || desc.includes('supermercado') || desc.includes('farmácia') || cat.includes('transporte')) return 'Variáveis Essenciais';
-    
-    if (cat.includes('lazer') || desc.includes('restaurante') || desc.includes('delivery') || desc.includes('compras') || desc.includes('passeio') || desc.includes('cinema') || desc.includes('netflix') || desc.includes('uber') || cat.includes('alimentação')) {
+    if (desc.includes('energia') || desc.includes('água') || desc.includes('gás') || desc.includes('luz') || cat.includes('saúde') || desc.includes('mercado') || desc.includes('supermercado') || desc.includes('farmácia') || cat.includes('transporte') || cat.includes('alimentação')) return 'Variáveis Essenciais';
+    if (cat.includes('lazer') || desc.includes('restaurante') || desc.includes('delivery') || desc.includes('compras') || desc.includes('passeio') || desc.includes('cinema') || desc.includes('netflix') || desc.includes('uber')) {
       if (desc.includes('mercado') || desc.includes('supermercado')) return 'Variáveis Essenciais';
       return 'Discricionárias';
     }
-    
-    return 'Fixas'; // Default for unrecognized categories dynamically added like in planning
+    return 'Discricionárias';
   }
 
   // Intelligent Normalization and Matching Functions
@@ -236,6 +245,17 @@
     return null;
   }
 
+  let pageLoadStates = {};
+  function invalidateCache() {
+    pageLoadStates = {};
+    const activePage = $('.page-view:not(.hidden-page)').attr('id');
+    if(activePage === 'page-dashboard') loadDashboard();
+    if(activePage === 'page-transactions') loadTransactions();
+    if(activePage === 'page-planning') loadPlanning();
+    if(activePage === 'page-categories') loadCategoriesPage();
+    if(activePage === 'page-spending-control' && typeof loadSpendingControl === 'function') loadSpendingControl();
+  }
+
   // Navigation Logic
   function navigateTo(pageId, title) {
     $('.page-view').addClass('hidden-page');
@@ -246,14 +266,18 @@
     $('.nav-item').removeClass('bg-gray-800 border-l-4 border-primary text-white').addClass('text-gray-400 dark:text-slate-500 border-transparent hover:bg-gray-800/50');
     $(`[data-target="${pageId}"]`).removeClass('text-gray-400 dark:text-slate-500 border-transparent hover:bg-gray-800/50').addClass('bg-gray-800 border-l-4 border-primary text-white');
     
-    // Trigger specific page loads
-    if(pageId === 'page-dashboard') loadDashboard();
-    if(pageId === 'page-planning') loadPlanning();
-    if(pageId === 'page-transactions') loadTransactions();
-    if(pageId === 'page-categories') loadCategoriesPage();
+    // Only load if not loaded yet
+    if (!pageLoadStates[pageId]) {
+      if(pageId === 'page-dashboard') loadDashboard();
+      if(pageId === 'page-transactions') loadTransactions();
+      if(pageId === 'page-planning') loadPlanning();
+      if(pageId === 'page-categories') loadCategoriesPage();
+      if(pageId === 'page-spending-control' && typeof loadSpendingControl === 'function') loadSpendingControl();
+      pageLoadStates[pageId] = true;
+    }
 
     // Toggle global filters
-    if (pageId === 'page-categories' || pageId === 'page-planning') {
+    if (pageId === 'page-categories') {
       $('#global-filters').removeClass('md:flex').addClass('!hidden');
     } else {
       $('#global-filters').removeClass('!hidden').addClass('md:flex');
@@ -277,13 +301,7 @@
     $('#filter-year').val(now.getFullYear());
 
     $('#filter-month, #filter-year').change(function() {
-      // Depending on active page, reload data
-      if (!$('#page-dashboard').hasClass('hidden-page')) {
-        loadDashboard();
-      }
-      if (!$('#page-transactions').hasClass('hidden-page')) {
-        loadTransactions();
-      }
+      invalidateCache();
     });
 
     $('.nav-item').click(function(e) {
@@ -294,8 +312,26 @@
       navigateTo(target, title);
     });
     
-    // Initial load
-    loadDashboard();
+    // Initial load: sync Single Source of Truth
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          if (data && data.categories) {
+            GLOBAL_CATEGORIES = data.categories;
+            localStorage.setItem('finance_global_categories', JSON.stringify(GLOBAL_CATEGORIES));
+            if (typeof renderCategoriesList === 'function') renderCategoriesList();
+            if (typeof populateRuleCategorySelect === 'function') populateRuleCategorySelect();
+            if (typeof updateCategoryFilterDropdown === 'function') updateCategoryFilterDropdown();
+          }
+          loadDashboard();
+        })
+        .withFailureHandler(function() {
+          loadDashboard();
+        })
+        
+    } else {
+      loadDashboard();
+    }
 
     // Helper para preencher dinamicamente as categorias no modal de Nova Transação
     function populateTransactionCategorySelect(selectedCategory) {
@@ -366,93 +402,6 @@
       const today = new Date().toISOString().split('T')[0];
       $('#t-data').val(today);
       $('#modal-transaction').removeClass('hidden');
-    });
-
-    // Botão NOVA na Matriz de Planejamento Financeiro
-    $(document).on('click', '#btn-planning-new-transaction', function() {
-      $('#form-planning-new-row')[0].reset();
-      
-      // Populate datalist with unique categories
-      const catList = $('#modal-new-row-cat-list');
-      catList.empty();
-      if (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0) {
-        const uniqueCats = [...new Set(currentLoadedTransactions.map(t => t.categoria))].filter(Boolean).sort();
-        uniqueCats.forEach(cat => {
-          catList.append(`<option value="${cat}">`);
-        });
-      }
-      
-      $('#modal-planning-new-row').removeClass('hidden');
-    });
-
-    $('#btn-cancel-planning-new-row, #btn-close-planning-new-row').click(function() {
-      $('#modal-planning-new-row').addClass('hidden');
-    });
-
-    $('#form-planning-new-row').submit(function(e) {
-      e.preventDefault();
-      const btn = $('#btn-submit-planning-new-row');
-      const origText = btn.html();
-      btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin mr-2"></i> Criando...');
-      
-      const macro = $('#modal-new-row-macro').val();
-      const cat = $('#modal-new-row-cat').val().trim();
-      const desc = $('#modal-new-row-desc').val().trim();
-      const val = parseFloat($('#modal-new-row-val').val());
-      
-      if (!cat || !desc || isNaN(val) || val <= 0) {
-        alert('Por favor, preencha todos os campos corretamente.');
-        btn.prop('disabled', false).html(origText);
-        return;
-      }
-      
-      const tipo = macro === 'Receitas' ? 'Entrada' : 'Saída';
-      
-      const yr = (typeof currentPlanningYear !== 'undefined' && currentPlanningYear) ? currentPlanningYear : new Date().getFullYear();
-      const currentMonth = new Date().getMonth() + 1;
-      const startMonth = Math.max(1, currentMonth);
-      
-      const itemsToSave = [];
-      for (let m = startMonth; m <= 12; m++) {
-        const mStr = String(m).padStart(2, '0');
-        itemsToSave.push({
-          origem: 'Planejamento',
-          descricao: desc,
-          categoria: cat,
-          tipo: tipo,
-          valor: val,
-          data: `${yr}-${mStr}-10` // Usa dia 10 como padrão para a projeção
-        });
-      }
-      
-      if (typeof google !== 'undefined' && google.script) {
-        google.script.run
-          .withSuccessHandler(function() {
-            $('#modal-planning-new-row').addClass('hidden');
-            $('#form-planning-new-row')[0].reset();
-            btn.prop('disabled', false).html(origText);
-            loadTransactions();
-            loadDashboard();
-            if (typeof loadPlanning === 'function') loadPlanning();
-          })
-          .withFailureHandler(function(err) {
-            alert('Erro ao criar linha: ' + err.message);
-            btn.prop('disabled', false).html(origText);
-          })
-          .saveBatchTransactions(itemsToSave);
-      } else {
-        // Fallback local
-        setTimeout(() => {
-          GLOBAL_MOCK_BACKUP = JSON.stringify(GLOBAL_MOCK_TRANSACTIONS);
-          itemsToSave.forEach(it => GLOBAL_MOCK_TRANSACTIONS.push(it));
-          $('#modal-planning-new-row').addClass('hidden');
-          $('#form-planning-new-row')[0].reset();
-          btn.prop('disabled', false).html(origText);
-          loadTransactions();
-          loadDashboard();
-          if (typeof loadPlanning === 'function') loadPlanning();
-        }, 700);
-      }
     });
 
     $('#btn-cancel-modal, #btn-close-modal-tx').click(function() {
@@ -589,9 +538,7 @@
         google.script.run
           .withSuccessHandler(function() {
             btn.html(originalHtml).prop('disabled', false);
-            loadTransactions();
-            loadDashboard();
-            if (typeof loadPlanning === 'function') loadPlanning();
+            invalidateCache();
             alert("Última ação desfeita com sucesso.");
           })
           .withFailureHandler(function(err) {
@@ -606,9 +553,7 @@
             const current = JSON.stringify(GLOBAL_MOCK_TRANSACTIONS);
             GLOBAL_MOCK_TRANSACTIONS = JSON.parse(GLOBAL_MOCK_BACKUP);
             GLOBAL_MOCK_BACKUP = current;
-            loadTransactions();
-            loadDashboard();
-            if (typeof loadPlanning === 'function') loadPlanning();
+            invalidateCache();
             alert("Última ação desfeita com sucesso (Modo Local).");
           } else {
             alert("Erro ao desfazer: Nenhuma ação anterior para desfazer.");
@@ -634,9 +579,7 @@
         google.script.run
           .withSuccessHandler(function() {
             btn.html(originalHtml).prop('disabled', false);
-            loadTransactions();
-            loadDashboard();
-            if (typeof loadPlanning === 'function') loadPlanning();
+            invalidateCache();
           })
           .withFailureHandler(function(err) {
             btn.html(originalHtml).prop('disabled', false);
@@ -659,9 +602,7 @@
             return !(matchYear && matchMonth); // Keep those that DO NOT match
           });
           
-          loadTransactions();
-          loadDashboard();
-          if (typeof loadPlanning === 'function') loadPlanning();
+          invalidateCache();
         }, 500);
       }
     });
@@ -742,9 +683,7 @@
         $('#modal-transaction').addClass('hidden');
         $('#form-transaction')[0].reset();
         btn.prop('disabled', false).html(origText);
-        loadTransactions();
-        loadDashboard();
-        if (typeof loadPlanning === 'function') loadPlanning();
+        invalidateCache();
       }
       
       if (typeof google !== 'undefined' && google.script) {
@@ -775,35 +714,6 @@
       }
     });
 
-    // AI Clean button
-    $('#btn-ai-clean').click(function() {
-      const descInput = $('#t-descricao');
-      const rawText = descInput.val();
-      if (!rawText) return;
-      
-      const btn = $(this);
-      btn.html('<i class="fa-solid fa-spinner fa-spin"></i>');
-      
-      if (typeof google !== 'undefined' && google.script) {
-        google.script.run
-          .withSuccessHandler(function(res) {
-            if (res.descricao) descInput.val(res.descricao);
-            if (res.categoria) $('#t-categoria').val(res.categoria);
-            btn.html('<i class="fa-solid fa-wand-magic-sparkles"></i>');
-          })
-          .withFailureHandler(function(err) {
-            console.error(err);
-            btn.html('<i class="fa-solid fa-wand-magic-sparkles"></i>');
-          })
-          .categorizeTransactionWithAI(rawText);
-      } else {
-        setTimeout(() => {
-          descInput.val('Uber');
-          $('#t-categoria').val('Transporte');
-          btn.html('<i class="fa-solid fa-wand-magic-sparkles"></i>');
-        }, 1200);
-      }
-    });
 
     // Toggle dropdown
     $('#btn-export-toggle').click(function(e) {
@@ -1043,8 +953,7 @@
               
               setTimeout(function() {
                 $('#modal-link-sheet').addClass('hidden');
-                loadTransactions();
-                loadDashboard();
+                invalidateCache();
               }, 1000);
             } else {
               alertBox
@@ -1083,8 +992,7 @@
           
           setTimeout(function() {
             $('#modal-link-sheet').addClass('hidden');
-            loadTransactions();
-            loadDashboard();
+            invalidateCache();
           }, 900);
         }, 500);
       }
@@ -1105,8 +1013,7 @@
               .html('<i class="fa-solid fa-circle-check mr-1.5"></i> Restaurado para a planilha padrão!');
             setTimeout(function() {
               $('#modal-link-sheet').addClass('hidden');
-              loadTransactions();
-              loadDashboard();
+              invalidateCache();
             }, 800);
           })
           .unlinkUserSpreadsheet();
@@ -1115,8 +1022,7 @@
         localStorage.removeItem('user_spreadsheet_url');
         loadLinkedSheetInfo();
         $('#modal-link-sheet').addClass('hidden');
-        loadTransactions();
-        loadDashboard();
+        invalidateCache();
       }
     });
 
@@ -1282,6 +1188,7 @@
                        profile: newProfile
                    };
                    GLOBAL_CATEGORIES.push(existingCat);
+                   saveCategoriesToStorage();
                    if(typeof renderCategoriesList === 'function') renderCategoriesList();
                    if(typeof populateRuleCategorySelect === 'function') populateRuleCategorySelect();
                }
@@ -3143,6 +3050,7 @@
             name: name,
             profile: 'Despesa Variável'
           });
+          saveCategoriesToStorage();
           renderCategoriesList();
           populateRuleCategorySelect();
           renderSyncTable();
@@ -3231,8 +3139,7 @@
             alert(`Sucesso! Categorias atualizadas e regras aplicadas com sucesso.`);
             renderCategoriesList();
             renderRulesList();
-            if (typeof loadTransactions === 'function') loadTransactions();
-            if (typeof loadDashboard === 'function') loadDashboard();
+            invalidateCache();
           })
           .withFailureHandler(function(err) {
             btn.prop('disabled', false).html(originalHtml);
@@ -3258,8 +3165,7 @@
           alert(`Sucesso! Categorias atualizadas e regras aplicadas com sucesso.`);
           renderCategoriesList();
           renderRulesList();
-          if (typeof loadTransactions === 'function') loadTransactions();
-          if (typeof loadDashboard === 'function') loadDashboard();
+          invalidateCache();
         }, 400);
       }
     });
@@ -3335,1738 +3241,8 @@
       $(this).addClass('hidden');
       applySortAndFilterTransactions();
     });
-
-    // ==========================================
-    // ABA PLANEJAMENTO FINANCEIRO ANUAL (EVENTOS)
-    // ==========================================
-    $('#planning-year-select').on('change', function() {
-      loadPlanning($(this).val());
-    });
-
-    $('#btn-refresh-planning').on('click', function() {
-      loadPlanning($('#planning-year-select').val());
-    });
-
-    // Toggle expand/collapse de linhas filhas na matriz
-    $(document).on('click', '.planning-toggle-row', function(e) {
-      if ($(e.target).closest('.planning-cell-action').length) return;
-      const targetClass = $(this).data('target');
-      const $rows = $('.' + targetClass);
-      const $chevron = $(this).find('.planning-chevron');
-      if ($rows.is(':visible')) {
-        $rows.addClass('hidden');
-        $chevron.removeClass('fa-chevron-down').addClass('fa-chevron-right');
-      } else {
-        $rows.removeClass('hidden');
-        $chevron.removeClass('fa-chevron-right').addClass('fa-chevron-down');
-      }
-    });
-
-    $('#btn-planning-expand-all').on('click', function() {
-      $('[class*="planning-income-subrows"], [class*="planning-macro-"]').removeClass('hidden');
-      $('.planning-chevron').removeClass('fa-chevron-right').addClass('fa-chevron-down');
-    });
-
-    $('#btn-planning-collapse-all').on('click', function() {
-      $('[class*="planning-income-subrows"], [class*="planning-macro-"]').addClass('hidden');
-      $('.planning-chevron').removeClass('fa-chevron-down').addClass('fa-chevron-right');
-    });
-
-    // Reset drilldown no gráfico de barras de composição
-    $('#btn-reset-planning-bar-chart').on('click', function() {
-      planningCompositionView = 'macro';
-      if (currentPlanningData) {
-        renderPlanningCompositionChart(currentPlanningData);
-      }
-    });
-
-    // Abertura do modal de transações ou seleção em grupo ao clicar em uma célula de mês ou linha
-    $(document).on('click', '.planning-cell-action', function(e) {
-      e.stopPropagation();
-      const cat = $(this).data('cat');
-      const month = parseInt($(this).data('month'), 10);
-      const type = $(this).data('type');
-      handlePlanningCellClick(this, cat, month, type);
-    });
-
-    // Exclusão de categoria inteira ao clicar no nome da categoria
-    $(document).on('click', '.planning-delete-category', function(e) {
-      e.stopPropagation();
-      const cat = $(this).data('cat');
-      const tipo = $(this).data('type');
-      const year = currentPlanningData ? currentPlanningData.year : currentPlanningYear;
-
-      if (!confirm(`Tem certeza que deseja excluir TODOS os lançamentos da categoria "${cat}" do ano de ${year}? Esta ação não pode ser desfeita.`)) {
-        return;
-      }
-
-      const $icon = $(this).find('.fa-trash-can');
-      $icon.removeClass('fa-trash-can text-rose-400 hover:text-rose-600').addClass('fa-spinner fa-spin text-gray-500 dark:text-slate-500');
-
-      function onDeleteSuccess() {
-        if (typeof loadTransactions === 'function') loadTransactions();
-        if (typeof loadDashboard === 'function') loadDashboard();
-        if (typeof loadPlanning === 'function') loadPlanning();
-      }
-
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run
-          .withSuccessHandler(onDeleteSuccess)
-          .withFailureHandler(function(err) {
-            alert('Erro ao excluir: ' + (err.message || err));
-            $icon.removeClass('fa-spinner fa-spin text-gray-500 dark:text-slate-500').addClass('fa-trash-can text-rose-400 hover:text-rose-600');
-          })
-          .deleteTransactionsRange(year, 1, 12, cat, tipo);
-      } else {
-        // Fallback local
-        setTimeout(() => {
-          if (GLOBAL_MOCK_TRANSACTIONS) {
-            GLOBAL_MOCK_TRANSACTIONS = GLOBAL_MOCK_TRANSACTIONS.filter(t => {
-              const tYear = parseInt(String(t.data).split('-')[0], 10);
-              return !(tYear === year && t.categoria === cat && t.tipo === tipo);
-            });
-          }
-          onDeleteSuccess();
-        }, 700);
-      }
-    });
-
-    // Botões da Barra de Ações em Grupo da Matriz
-    $('#btn-planning-range-cancel').on('click', function(e) {
-      e.stopPropagation();
-      clearPlanningRangeSelection();
-    });
-
-    $('#btn-planning-range-add').on('click', function(e) {
-      e.stopPropagation();
-      openPlanningRangeAddModal();
-    });
-
-    $('#btn-planning-range-delete').on('click', function(e) {
-      e.stopPropagation();
-      openPlanningRangeDeleteModal();
-    });
-
-    // Modais de Grupo: Fechar e Cancelar
-    $('#btn-close-range-add, #btn-cancel-range-add').on('click', function() {
-      $('#modal-planning-range-add').addClass('hidden');
-    });
-    $('#modal-planning-range-add').on('click', function(e) {
-      if ($(e.target).is('#modal-planning-range-add')) $(this).addClass('hidden');
-    });
-
-    $('#btn-close-range-delete, #btn-cancel-range-delete').on('click', function() {
-      $('#modal-planning-range-delete').addClass('hidden');
-    });
-    $('#modal-planning-range-delete').on('click', function(e) {
-      if ($(e.target).is('#modal-planning-range-delete')) $(this).addClass('hidden');
-    });
-
-    // Submissão do Form de Adicionar em Grupo
-    $('#form-planning-range-add').on('submit', function(e) {
-      e.preventDefault();
-      submitPlanningRangeAdd();
-    });
-
-    // Selecionar todos no modal de exclusão
-    $('#check-delete-all-range').on('change', function() {
-      const isChecked = $(this).is(':checked');
-      $('.check-delete-range-item').prop('checked', isChecked);
-      updateRangeDeleteSummary();
-    });
-
-    $(document).on('change', '.check-delete-range-item', function() {
-      const total = $('.check-delete-range-item').length;
-      const checked = $('.check-delete-range-item:checked').length;
-      $('#check-delete-all-range').prop('checked', total > 0 && total === checked);
-      updateRangeDeleteSummary();
-    });
-
-    // Confirmar exclusão em grupo
-    $('#btn-confirm-range-delete').on('click', function() {
-      submitPlanningRangeDelete();
-    });
-
-    $('#btn-close-planning-tx, #btn-close-planning-tx-footer').on('click', function() {
-      $('#modal-planning-transactions').addClass('hidden');
-    });
-
-    $('#modal-planning-transactions').on('click', function(e) {
-      if ($(e.target).is('#modal-planning-transactions')) {
-        $(this).addClass('hidden');
-      }
-    });
-
   });
 
-  // ==========================================
-  // FUNÇÕES DE DADOS E RENDERIZAÇÃO DO PLANEJAMENTO
-  // ==========================================
-  let currentPlanningData = null;
-  let planningEvolutionChartInstance = null;
-  let planningCompositionChartInstance = null;
-  let planningCompositionView = 'macro'; // 'macro' | 'income' | 'macro-Fixas' | 'macro-Variáveis Essenciais' | 'macro-Discricionárias'
-  let currentPlanningYear = new Date().getFullYear();
-
-  function loadPlanning(forcedYear) {
-    $('#planning-loading').removeClass('hidden');
-    $('#planning-content').addClass('hidden');
-
-    const yearVal = forcedYear || $('#planning-year-select').val() || currentPlanningYear;
-    const year = parseInt(yearVal, 10);
-    currentPlanningYear = year;
-
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      google.script.run
-        .withSuccessHandler(function(data) {
-          $('#planning-loading').addClass('hidden');
-          $('#planning-content').removeClass('hidden');
-          renderPlanning(data);
-        })
-        .withFailureHandler(function(err) {
-          console.error("Erro ao carregar planejamento via Apps Script, executando fallback local:", err);
-          const localData = calculateLocalPlanningData(year);
-          $('#planning-loading').addClass('hidden');
-          $('#planning-content').removeClass('hidden');
-          renderPlanning(localData);
-        })
-        .getPlanningData(year);
-    } else {
-      setTimeout(() => {
-        const localData = calculateLocalPlanningData(year);
-        $('#planning-loading').addClass('hidden');
-        $('#planning-content').removeClass('hidden');
-        renderPlanning(localData);
-      }, 200);
-    }
-  }
-
-  function calculateLocalPlanningData(targetYear) {
-    const now = new Date();
-    const currentSystemYear = now.getFullYear();
-    const currentSystemMonth = now.getMonth() + 1; // 1-12
-    const currentSystemDay = now.getDate();
-
-    const parsedYear = targetYear ? parseInt(targetYear, 10) : currentSystemYear;
-
-    const txSource = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
-      ? currentLoadedTransactions
-      : (typeof applyCategoryOverrides === 'function' ? applyCategoryOverrides(GLOBAL_MOCK_TRANSACTIONS || []) : (GLOBAL_MOCK_TRANSACTIONS || []));
-
-    const yearsSet = new Set();
-    yearsSet.add(currentSystemYear);
-
-    const validRows = [];
-    txSource.forEach(t => {
-      if (!t.data) return;
-      const parts = String(t.data).split('-');
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      const d = parts[2] ? parseInt(parts[2], 10) : 1;
-      if (isNaN(y) || isNaN(m)) return;
-
-      yearsSet.add(y);
-      if (y === parsedYear) {
-        validRows.push({
-          origem: t.origem || '',
-          descricao: String(t.descricao || '').trim(),
-          categoria: String(t.categoria || '').trim() || 'Outros',
-          tipo: String(t.tipo || '').trim(),
-          valor: parseFloat(t.valor) || 0,
-          data: t.data,
-          month: m,
-          day: d
-        });
-      }
-    });
-
-    const availableYears = Array.from(yearsSet).sort((a, b) => b - a);
-
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    const monthShort = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-
-    const monthsMeta = [];
-    for (let m = 1; m <= 12; m++) {
-      let status = 'realized';
-      if (parsedYear < currentSystemYear) {
-        status = 'realized';
-      } else if (parsedYear > currentSystemYear) {
-        status = 'planned';
-      } else {
-        if (m < currentSystemMonth) status = 'realized';
-        else if (m === currentSystemMonth) status = 'current';
-        else status = 'planned';
-      }
-      monthsMeta.push({
-        month: m,
-        name: monthNames[m - 1],
-        shortName: monthShort[m - 1],
-        status: status
-      });
-    }
-
-    const incomeCategoryMap = {};
-    const expenseMacroMap = {
-      'Fixas': { label: 'Despesas Fixas', months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0})), totalYear: 0, subcategories: {} },
-      'Variáveis Essenciais': { label: 'Variáveis Essenciais', months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0})), totalYear: 0, subcategories: {} },
-      'Discricionárias': { label: 'Despesas Discricionárias', months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0})), totalYear: 0, subcategories: {} }
-    };
-
-    const monthlyTotals = Array.from({length: 12}, () => ({
-      incomeRealized: 0,
-      incomePlanned: 0,
-      incomeTotal: 0,
-      expenseRealized: 0,
-      expensePlanned: 0,
-      expenseTotal: 0,
-      monthlyBalance: 0,
-      accumulatedBalance: 0,
-      status: 'realized'
-    }));
-
-    monthsMeta.forEach((mm, idx) => {
-      monthlyTotals[idx].status = mm.status;
-    });
-
-    validRows.forEach(tx => {
-      const mIdx = tx.month - 1;
-      if (mIdx < 0 || mIdx > 11) return;
-
-      const mStatus = monthsMeta[mIdx].status;
-      let isTxRealized = true;
-
-      if (mStatus === 'realized') {
-        isTxRealized = true;
-      } else if (mStatus === 'planned') {
-        isTxRealized = false;
-      } else {
-        if (tx.day <= currentSystemDay) {
-          isTxRealized = true;
-        } else {
-          isTxRealized = false;
-        }
-      }
-
-      const txObj = {
-        origem: tx.origem,
-        descricao: tx.descricao,
-        categoria: tx.categoria,
-        tipo: tx.tipo,
-        valor: tx.valor,
-        data: tx.data,
-        isRealized: isTxRealized,
-        statusLabel: isTxRealized ? 'Realizado' : 'Previsto'
-      };
-
-      if (tx.tipo === 'Entrada') {
-        const cat = tx.categoria;
-        if (!incomeCategoryMap[cat]) {
-          incomeCategoryMap[cat] = {
-            label: cat,
-            months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0, txs: []})),
-            totalYear: 0,
-            totalRealized: 0,
-            totalPlanned: 0
-          };
-        }
-
-        if (isTxRealized) {
-          incomeCategoryMap[cat].months[mIdx].realized += tx.valor;
-          incomeCategoryMap[cat].totalRealized += tx.valor;
-          monthlyTotals[mIdx].incomeRealized += tx.valor;
-        } else {
-          incomeCategoryMap[cat].months[mIdx].planned += tx.valor;
-          incomeCategoryMap[cat].totalPlanned += tx.valor;
-          monthlyTotals[mIdx].incomePlanned += tx.valor;
-        }
-
-        incomeCategoryMap[cat].months[mIdx].total += tx.valor;
-        incomeCategoryMap[cat].months[mIdx].txs.push(txObj);
-        incomeCategoryMap[cat].totalYear += tx.valor;
-        monthlyTotals[mIdx].incomeTotal += tx.valor;
-
-      } else if (tx.tipo === 'Saída') {
-        let macro = 'Discricionárias';
-        if (typeof getMacroCategory === 'function') {
-          macro = getMacroCategory(tx.categoria, tx.descricao);
-        }
-        if (!expenseMacroMap[macro]) {
-          macro = 'Discricionárias';
-        }
-
-        const macroObj = expenseMacroMap[macro];
-        if (isTxRealized) {
-          macroObj.months[mIdx].realized += tx.valor;
-          monthlyTotals[mIdx].expenseRealized += tx.valor;
-        } else {
-          macroObj.months[mIdx].planned += tx.valor;
-          monthlyTotals[mIdx].expensePlanned += tx.valor;
-        }
-        macroObj.months[mIdx].total += tx.valor;
-        macroObj.totalYear += tx.valor;
-        monthlyTotals[mIdx].expenseTotal += tx.valor;
-
-        const cat = tx.categoria;
-        if (!macroObj.subcategories[cat]) {
-          macroObj.subcategories[cat] = {
-            label: cat,
-            macro: macro,
-            months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0, txs: []})),
-            totalYear: 0,
-            totalRealized: 0,
-            totalPlanned: 0
-          };
-        }
-
-        const subCat = macroObj.subcategories[cat];
-        if (isTxRealized) {
-          subCat.months[mIdx].realized += tx.valor;
-          subCat.totalRealized += tx.valor;
-        } else {
-          subCat.months[mIdx].planned += tx.valor;
-          subCat.totalPlanned += tx.valor;
-        }
-        subCat.months[mIdx].total += tx.valor;
-        subCat.months[mIdx].txs.push(txObj);
-        subCat.totalYear += tx.valor;
-      }
-    });
-
-    let runningAccumulated = 0;
-    let currentAccumulatedBalance = 0;
-    let totalYearIncome = 0;
-    let totalYearIncomeRealized = 0;
-    let totalYearIncomePlanned = 0;
-    let totalYearExpense = 0;
-    let totalYearExpenseRealized = 0;
-    let totalYearExpensePlanned = 0;
-
-    for (let m = 0; m < 12; m++) {
-      const item = monthlyTotals[m];
-      totalYearIncome += item.incomeTotal;
-      totalYearIncomeRealized += item.incomeRealized;
-      totalYearIncomePlanned += item.incomePlanned;
-
-      totalYearExpense += item.expenseTotal;
-      totalYearExpenseRealized += item.expenseRealized;
-      totalYearExpensePlanned += item.expensePlanned;
-
-      if (item.status === 'realized') {
-        item.monthlyBalance = item.incomeRealized - item.expenseRealized;
-      } else if (item.status === 'current') {
-        item.monthlyBalance = item.incomeTotal - item.expenseTotal;
-      } else {
-        item.monthlyBalance = (item.incomePlanned || item.incomeTotal) - (item.expensePlanned || item.expenseTotal);
-      }
-
-      runningAccumulated += item.monthlyBalance;
-      item.accumulatedBalance = runningAccumulated;
-
-      if (item.status === 'realized' || (item.status === 'current' && parsedYear === currentSystemYear)) {
-        currentAccumulatedBalance = runningAccumulated;
-      }
-    }
-
-    const projectedYearEndBalance = runningAccumulated;
-
-    const incomeCategoriesList = Object.values(incomeCategoryMap).sort((a, b) => b.totalYear - a.totalYear);
-
-    const expenseMacrosList = Object.keys(expenseMacroMap).map(macroKey => {
-      const mData = expenseMacroMap[macroKey];
-      const subcats = Object.values(mData.subcategories).sort((a, b) => b.totalYear - a.totalYear);
-      return {
-        key: macroKey,
-        label: mData.label,
-        months: mData.months,
-        totalYear: mData.totalYear,
-        subcategories: subcats
-      };
-    });
-
-    return {
-      year: parsedYear,
-      currentSystemYear: currentSystemYear,
-      currentSystemMonth: currentSystemMonth,
-      currentSystemDay: currentSystemDay,
-      availableYears: availableYears,
-      monthsMeta: monthsMeta,
-      monthlyTotals: monthlyTotals,
-      incomeCategories: incomeCategoriesList,
-      expenseMacros: expenseMacrosList,
-      summary: {
-        totalYearIncome: totalYearIncome,
-        totalYearIncomeRealized: totalYearIncomeRealized,
-        totalYearIncomePlanned: totalYearIncomePlanned,
-        totalYearExpense: totalYearExpense,
-        totalYearExpenseRealized: totalYearExpenseRealized,
-        totalYearExpensePlanned: totalYearExpensePlanned,
-        currentAccumulatedBalance: currentAccumulatedBalance,
-        projectedYearEndBalance: projectedYearEndBalance
-      }
-    };
-  }
-
-  function renderPlanning(data) {
-    currentPlanningData = data;
-
-    // Atualiza opções do select de anos
-    const $yearSelect = $('#planning-year-select');
-    const existingYears = $yearSelect.find('option').map(function() { return parseInt($(this).val(), 10); }).get();
-    const dataYears = data.availableYears || [data.year];
-    
-    // Se a lista de anos for diferente, remonta as options
-    if (JSON.stringify(existingYears.sort()) !== JSON.stringify(dataYears.sort())) {
-      $yearSelect.empty();
-      dataYears.forEach(y => {
-        $yearSelect.append(`<option value="${y}" ${y === data.year ? 'selected' : ''}>${y}</option>`);
-      });
-    }
-    $yearSelect.val(data.year);
-    $('#planning-table-year-label').text(data.year);
-
-    // Atualiza badge com mês atual do sistema
-    const currentMonthName = (data.monthsMeta && data.monthsMeta[data.currentSystemMonth - 1]) 
-      ? data.monthsMeta[data.currentSystemMonth - 1].name 
-      : 'Setembro';
-    $('#planning-current-month-badge').html(`
-      <span class="w-2 h-2 rounded-full bg-primary animate-pulse inline-block"></span>
-      Hoje: ${currentMonthName}/${data.currentSystemYear}
-    `);
-
-    // Atualiza Cards de Resumo
-    $('#card-planning-income-total').text(formatCurrency(data.summary.totalYearIncome));
-    $('#card-planning-income-realized').text(formatCurrency(data.summary.totalYearIncomeRealized));
-    $('#card-planning-income-planned').text(formatCurrency(data.summary.totalYearIncomePlanned));
-
-    $('#card-planning-expense-total').text(formatCurrency(data.summary.totalYearExpense));
-    $('#card-planning-expense-realized').text(formatCurrency(data.summary.totalYearExpenseRealized));
-    $('#card-planning-expense-planned').text(formatCurrency(data.summary.totalYearExpensePlanned));
-
-    $('#card-planning-current-balance').text(formatCurrency(data.summary.currentAccumulatedBalance))
-      .removeClass('text-emerald-600 text-red-600 text-gray-900 dark:text-white')
-      .addClass(data.summary.currentAccumulatedBalance >= 0 ? 'text-gray-900 dark:text-white' : 'text-red-600');
-
-    $('#card-planning-projected-balance').text(formatCurrency(data.summary.projectedYearEndBalance))
-      .removeClass('text-purple-900 text-red-600')
-      .addClass(data.summary.projectedYearEndBalance >= 0 ? 'text-purple-900' : 'text-red-600');
-
-    // Atualiza cabeçalho das colunas dos meses com base no ano e status
-    $('.planning-th-month').each(function() {
-      const m = parseInt($(this).data('month'), 10);
-      const meta = data.monthsMeta[m - 1];
-      const $badge = $(this).find('.month-badge');
-      const $title = $(this).find('div:first-child');
-
-      $(this).removeClass('bg-blue-50/80 dark:!bg-gray-200 ring-2 ring-primary/40 text-primary ring-1');
-
-      if (meta.status === 'realized') {
-        $title.removeClass('text-primary text-purple-700 dark:text-purple-300').addClass('text-gray-700 dark:text-slate-300');
-        $badge.text('Realizado').removeClass('text-primary text-purple-600 font-bold font-semibold').addClass('text-gray-400 dark:text-slate-500 font-medium');
-      } else if (meta.status === 'current') {
-        $(this).addClass('bg-blue-50/80 dark:!bg-gray-200 ring-1 ring-primary/40');
-        $title.removeClass('text-gray-700 dark:text-slate-300 text-purple-700 dark:text-purple-300 text-primary').addClass('text-black dark:!text-black font-bold');
-        $badge.text('Atual').removeClass('text-gray-400 dark:text-slate-500 text-purple-600 text-primary font-medium').addClass('text-black dark:!text-black font-bold');
-      } else {
-        $title.removeClass('text-gray-700 dark:text-slate-300 text-primary').addClass('text-purple-700 dark:text-purple-300');
-        $badge.text('Previsto').removeClass('text-gray-400 dark:text-slate-500 text-primary').addClass('text-purple-600 font-semibold');
-      }
-    });
-
-    // Renderiza a Matriz da Tabela
-    renderPlanningMatrixBody(data);
-
-    // Renderiza Gráficos
-    renderPlanningEvolutionChart(data);
-    renderPlanningCompositionChart(data);
-  }
-
-  function renderPlanningMatrixBody(data) {
-    // Limpa seleção ativa ao recarregar a matriz
-    clearPlanningRangeSelection();
-
-    const $tbody = $('#planning-matrix-body');
-    $tbody.empty();
-
-    let html = '';
-
-    // ==========================================
-    // 1. LINHA PRINCIPAL: RECEITAS (TOTAL)
-    // ==========================================
-    html += `
-      <tr class="bg-emerald-50/70 dark:bg-emerald-900/30 hover:bg-emerald-100/50 dark:hover:bg-emerald-800/40 font-bold border-t-2 border-emerald-300 dark:border-emerald-700 cursor-pointer planning-toggle-row select-none" data-target="planning-income-subrows">
-        <td class="p-3.5 sticky left-0 z-10 bg-emerald-50/90 dark:!bg-emerald-950 border-r border-gray-200 dark:border-emerald-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2 text-emerald-950 dark:text-white font-bold">
-              <i class="fa-solid fa-chevron-down text-xs text-gray-500 dark:text-slate-400 planning-chevron transition-transform duration-200"></i>
-              <i class="fa-solid fa-arrow-trend-up text-xs text-emerald-600"></i>
-              <span>RECEITAS</span>
-            </div>
-            
-          </div>
-        </td>
-    `;
-
-    for (let m = 0; m < 12; m++) {
-      const val = data.monthlyTotals[m].incomeTotal;
-      const status = data.monthsMeta[m].status;
-      const highlight = status === 'current' ? 'bg-blue-50/50 dark:!bg-gray-200 dark:!text-black ring-1 ring-primary/20' : (status === 'planned' ? 'text-purple-700 dark:text-purple-300' : 'text-emerald-900 dark:text-white');
-      const valDisplay = val > 0 ? formatCurrency(val) : '-';
-      html += `
-        <td class="p-2.5 text-right font-medium border-r border-gray-200 dark:border-slate-700/60 dark:border-slate-700/60 cursor-pointer planning-cell-action hover:bg-emerald-100/60 dark:hover:bg-emerald-800/40 transition-colors ${highlight}" 
-            data-cat="__ALL_INCOME__" data-month="${m + 1}" data-type="Entrada" title="Clique para ver transações de receitas em ${data.monthsMeta[m].name}">
-          ${valDisplay}
-        </td>
-      `;
-    }
-
-    html += `
-        <td class="p-3.5 text-right font-bold text-emerald-900 dark:text-white bg-emerald-100/50 dark:!bg-emerald-950 border-l border-gray-200 dark:border-slate-700">
-          ${formatCurrency(data.summary.totalYearIncome)}
-        </td>
-      </tr>
-    `;
-
-    // Linhas Filhas de Receitas (Categorias Dinâmicas)
-    if (data.incomeCategories && data.incomeCategories.length > 0) {
-      data.incomeCategories.forEach(cat => {
-        html += `
-          <tr class="planning-income-subrows hover:bg-emerald-50 dark:hover:!bg-slate-700 dark:hover:!bg-slate-700 transition-colors bg-white dark:!bg-slate-800 border-b border-gray-100 dark:border-slate-700 group">
-            <td class="p-2.5 pl-7 sticky left-0 z-10 bg-white dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] font-normal text-gray-700 dark:text-slate-300 cursor-pointer hover:bg-gray-50 dark:hover:!bg-slate-700 transition-colors planning-delete-category" data-cat="${cat.label}" data-type="Entrada" title="Excluir Categoria Inteira">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                  <span class="truncate">${cat.label}</span>
-                </div>
-                <i class="fa-solid fa-trash-can text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] hover:text-rose-600"></i>
-              </div>
-            </td>
-        `;
-
-        for (let m = 0; m < 12; m++) {
-          const mData = cat.months[m];
-          const val = mData ? mData.total : 0;
-          const status = data.monthsMeta[m].status;
-          const highlight = status === 'current' ? 'bg-blue-50/30 dark:!bg-gray-200 dark:!text-black' : (status === 'planned' ? 'text-purple-700 dark:text-purple-300 font-medium' : 'text-gray-700 dark:text-slate-300');
-          const valDisplay = val > 0 ? formatCurrency(val) : '-';
-          html += `
-            <td class="p-2.5 text-right border-r border-gray-200 dark:border-slate-700/60 dark:border-slate-700/60 cursor-pointer planning-cell-action hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors ${highlight}" 
-                data-cat="${cat.label}" data-month="${m + 1}" data-type="Entrada" title="${cat.label} em ${data.monthsMeta[m].name}: ${valDisplay}">
-              ${valDisplay}
-            </td>
-          `;
-        }
-
-        html += `
-            <td class="p-2.5 text-right font-semibold text-emerald-800 dark:text-emerald-200 bg-gray-50/60 border-l border-gray-200 dark:border-slate-700">
-              ${formatCurrency(cat.totalYear)}
-            </td>
-          </tr>
-        `;
-      });
-    } else {
-      html += `
-        <tr class="planning-income-subrows bg-white dark:bg-slate-800 text-gray-400 dark:text-slate-500 italic text-[11px]">
-          <td colspan="14" class="p-3 pl-8">Nenhuma categoria de receita registrada neste ano.</td>
-        </tr>
-      `;
-    }
-
-    // ==========================================
-    // 2. LINHA PRINCIPAL: DESPESAS (TOTAL)
-    // ==========================================
-    html += `
-      <tr class="bg-red-50/70 dark:bg-red-900/20 hover:bg-red-100/50 dark:hover:bg-red-800/40 font-bold border-t-2 border-red-300 dark:border-red-800 select-none">
-        <td class="p-3.5 sticky left-0 z-10 bg-red-50/90 dark:!bg-red-950 border-r border-gray-200 dark:border-red-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2 text-red-950 dark:text-white font-bold">
-              <i class="fa-solid fa-arrow-trend-down text-xs text-red-600"></i>
-              <span>DESPESAS</span>
-            </div>
-            
-          </div>
-        </td>
-    `;
-
-    for (let m = 0; m < 12; m++) {
-      const val = data.monthlyTotals[m].expenseTotal;
-      const status = data.monthsMeta[m].status;
-      const highlight = status === 'current' ? 'bg-blue-50/50 dark:!bg-gray-200 dark:!text-black ring-1 ring-primary/20' : (status === 'planned' ? 'text-purple-700 dark:text-purple-300' : 'text-red-900 dark:text-white');
-      const valDisplay = val > 0 ? formatCurrency(val) : '-';
-      html += `
-        <td class="p-2.5 text-right font-medium border-r border-gray-200 dark:border-slate-700/60 dark:border-slate-700/60 cursor-pointer planning-cell-action hover:bg-red-100/60 dark:hover:bg-red-900/40 transition-colors ${highlight}" 
-            data-cat="__ALL_EXPENSE__" data-month="${m + 1}" data-type="Saída" title="Clique para ver transações de despesas em ${data.monthsMeta[m].name}">
-          ${valDisplay}
-        </td>
-      `;
-    }
-
-    html += `
-        <td class="p-3.5 text-right font-bold text-red-900 dark:text-white bg-red-100/50 dark:!bg-red-950 border-l border-gray-200 dark:border-slate-700">
-          ${formatCurrency(data.summary.totalYearExpense)}
-        </td>
-      </tr>
-    `;
-
-    // Macrocategorias de Despesas (Fixas, Variáveis Essenciais, Discricionárias)
-    const MACRO_DOT_COLORS = {
-      'Fixas': 'bg-red-800',
-      'Variáveis Essenciais': 'bg-red-500',
-      'Discricionárias': 'bg-rose-400'
-    };
-
-    data.expenseMacros.forEach(macro => {
-      const dotColor = MACRO_DOT_COLORS[macro.key] || 'bg-gray-500';
-      html += `
-        <tr class="bg-gray-50/90 dark:bg-red-900/20 hover:bg-gray-100/70 dark:hover:bg-red-800/40 font-semibold cursor-pointer planning-toggle-row select-none border-t border-gray-200 dark:border-slate-700" data-target="planning-macro-${macro.key.replace(/\s+/g, '-')}">
-          <td class="p-3 pl-5 sticky left-0 z-10 bg-gray-50/95 dark:!bg-red-950 border-r border-gray-200 dark:border-red-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-2 text-gray-800 dark:text-white font-semibold">
-                <i class="fa-solid fa-chevron-down text-xs text-gray-500 dark:text-slate-500 planning-chevron transition-transform duration-200"></i>
-                <span class="w-2 h-2 rounded-full ${dotColor} shrink-0"></span>
-                <span>${macro.label}</span>
-              </div>
-              
-            </div>
-          </td>
-      `;
-
-      for (let m = 0; m < 12; m++) {
-        const val = macro.months[m] ? macro.months[m].total : 0;
-        const status = data.monthsMeta[m].status;
-        const highlight = status === 'current' ? 'bg-blue-50/40 dark:!bg-gray-200 dark:!text-black' : (status === 'planned' ? 'text-purple-700 dark:text-purple-300' : 'text-gray-800 dark:text-white');
-        const valDisplay = val > 0 ? formatCurrency(val) : '-';
-        html += `
-          <td class="p-2.5 text-right font-medium border-r border-gray-200 dark:border-slate-700/60 dark:border-slate-700/60 cursor-pointer planning-cell-action hover:bg-red-100/60 dark:hover:bg-red-900/40 transition-colors ${highlight}" 
-              data-cat="__MACRO_${macro.key}" data-month="${m + 1}" data-type="Saída" title="${macro.label} em ${data.monthsMeta[m].name}: ${valDisplay}">
-            ${valDisplay}
-          </td>
-        `;
-      }
-
-      html += `
-          <td class="p-3 text-right font-bold text-gray-900 dark:text-white bg-gray-100/70 border-l border-gray-200 dark:border-slate-700">
-            ${formatCurrency(macro.totalYear)}
-          </td>
-        </tr>
-      `;
-
-      // Subcategorias dentro desta macrocategoria
-      macro.subcategories.forEach(subcat => {
-        html += `
-          <tr class="planning-macro-${macro.key.replace(/\s+/g, '-')} hover:bg-gray-50 dark:hover:!bg-slate-700/80 transition-colors bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 font-normal group">
-            <td class="p-2 pl-9 sticky left-0 z-10 bg-white dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] text-gray-600 dark:text-slate-400 cursor-pointer hover:bg-gray-50 dark:hover:!bg-slate-700 transition-colors planning-delete-category" data-cat="${subcat.label}" data-type="Saída" title="Excluir Categoria Inteira">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0"></span>
-                  <span class="truncate">${subcat.label}</span>
-                </div>
-                <i class="fa-solid fa-trash-can text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] hover:text-rose-600"></i>
-              </div>
-            </td>
-        `;
-
-        for (let m = 0; m < 12; m++) {
-          const val = subcat.months[m] ? subcat.months[m].total : 0;
-          const status = data.monthsMeta[m].status;
-          const highlight = status === 'current' ? 'bg-blue-50/30 dark:!bg-gray-200 dark:!text-black' : (status === 'planned' ? 'text-purple-700 dark:text-purple-300 font-medium' : 'text-gray-700 dark:text-slate-300');
-          const valDisplay = val > 0 ? formatCurrency(val) : '-';
-          html += `
-            <td class="p-2 text-right border-r border-gray-200 dark:border-slate-700/60 dark:border-slate-700/60 cursor-pointer planning-cell-action hover:bg-red-50/60 dark:hover:!bg-slate-700 transition-colors ${highlight}" 
-                data-cat="${subcat.label}" data-month="${m + 1}" data-type="Saída" title="${subcat.label} em ${data.monthsMeta[m].name}: ${valDisplay}">
-              ${valDisplay}
-            </td>
-          `;
-        }
-
-        html += `
-            <td class="p-2 text-right font-semibold text-gray-700 dark:text-slate-300 bg-gray-50/40 border-l border-gray-200 dark:border-slate-700">
-              ${formatCurrency(subcat.totalYear)}
-            </td>
-          </tr>
-        `;
-      });
-    });
-
-    // ==========================================
-    // 3. LINHA: SALDO MENSAL
-    // ==========================================
-    html += `
-      <tr class="bg-slate-100/95 dark:!bg-blue-950 font-bold border-t-2 border-gray-300 dark:border-slate-600 select-none">
-        <td class="p-3.5 sticky left-0 z-10 bg-blue-50 dark:!bg-blue-900 border-r border-gray-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
-          <div class="flex items-center space-x-2 text-gray-800 dark:text-white">
-            <i class="fa-solid fa-scale-balanced text-primary text-xs"></i>
-            <span>SALDO MENSAL</span>
-          </div>
-        </td>
-    `;
-
-    let totalYearMonthlyBalance = 0;
-    for (let m = 0; m < 12; m++) {
-      const val = data.monthlyTotals[m].monthlyBalance;
-      totalYearMonthlyBalance += val;
-      const isPositive = val >= 0;
-      const color = isPositive ? 'text-emerald-700 dark:text-white' : 'text-red-600 dark:text-white';
-      const status = data.monthsMeta[m].status;
-      const bg = status === 'current' ? 'bg-blue-50/80 dark:!bg-gray-200 dark:!text-black ring-1 ring-primary/30' : '';
-      const projSuffix = status === 'planned' ? '<span class="text-[9px] text-purple-600 block leading-tight font-sans font-semibold">(prev.)</span>' : '';
-      html += `
-        <td class="p-2.5 text-right font-bold border-r border-gray-200 dark:border-slate-700/60 dark:border-slate-700/60 ${color} ${bg}">
-          <div>${formatCurrency(val)}</div>
-          ${projSuffix}
-        </td>
-      `;
-    }
-
-    const totalBalanceColor = totalYearMonthlyBalance >= 0 ? 'text-emerald-700 dark:text-white' : 'text-red-600 dark:text-white';
-    html += `
-        <td class="p-3.5 text-right font-bold ${totalBalanceColor} bg-slate-200/60 dark:!bg-blue-950 border-l border-gray-200 dark:border-slate-700">
-          ${formatCurrency(totalYearMonthlyBalance)}
-        </td>
-      </tr>
-    `;
-
-    // ==========================================
-    // 4. LINHA: SALDO ACUMULADO
-    // ==========================================
-    html += `
-      <tr class="bg-blue-50/70 dark:bg-blue-900/30 font-bold border-t border-b-2 border-blue-200 dark:border-blue-800 select-none">
-        <td class="p-3.5 sticky left-0 z-10 bg-blue-50 dark:!bg-blue-900 border-r border-gray-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
-          <div class="flex items-center space-x-2 text-blue-950 dark:text-white font-bold">
-            <i class="fa-solid fa-chart-line text-blue-600 text-xs"></i>
-            <span>SALDO ACUMULADO</span>
-          </div>
-        </td>
-    `;
-
-    for (let m = 0; m < 12; m++) {
-      const val = data.monthlyTotals[m].accumulatedBalance;
-      const isPositive = val >= 0;
-      const color = isPositive ? 'text-blue-900 dark:text-white' : 'text-red-700 dark:text-white';
-      const status = data.monthsMeta[m].status;
-      const bg = status === 'current' ? 'bg-blue-100/60 dark:!bg-gray-200 dark:!text-black ring-1 ring-primary/40' : '';
-      const projSuffix = status === 'planned' ? '<span class="text-[9px] text-purple-700 dark:text-purple-300 block leading-tight font-sans font-semibold">(proj.)</span>' : '';
-      html += `
-        <td class="p-2.5 text-right font-bold border-r border-gray-200 dark:border-slate-700/60 dark:border-slate-700/60 ${color} ${bg}">
-          <div>${formatCurrency(val)}</div>
-          ${projSuffix}
-        </td>
-      `;
-    }
-
-    const endYearColor = data.summary.projectedYearEndBalance >= 0 ? 'text-blue-950 dark:text-white' : 'text-red-700 dark:text-white';
-    html += `
-        <td class="p-3.5 text-right font-bold ${endYearColor} bg-blue-100/80 dark:!bg-blue-900 border-l border-gray-200 dark:border-slate-700">
-          ${formatCurrency(data.summary.projectedYearEndBalance)}
-        </td>
-      </tr>
-    `;
-
-    $tbody.html(html);
-  }
-
-  function renderPlanningEvolutionChart(data) {
-    const ctx = document.getElementById('planning-evolution-chart');
-    if (!ctx) return;
-
-    if (planningEvolutionChartInstance) {
-      planningEvolutionChartInstance.destroy();
-    }
-
-    const labels = data.monthsMeta.map(m => m.shortName);
-    const monthlyBalances = data.monthlyTotals.map(item => item.monthlyBalance);
-    const accumulatedBalances = data.monthlyTotals.map(item => item.accumulatedBalance);
-
-    // Cores dinâmicas para as barras de saldo mensal
-    const barBackgrounds = data.monthlyTotals.map((item, idx) => {
-      const isProj = data.monthsMeta[idx].status === 'planned';
-      if (item.monthlyBalance >= 0) {
-        return isProj ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.85)';
-      } else {
-        return isProj ? 'rgba(239, 68, 68, 0.45)' : 'rgba(239, 68, 68, 0.85)';
-      }
-    });
-
-    const barBorders = data.monthlyTotals.map((item, idx) => {
-      const isProj = data.monthsMeta[idx].status === 'planned';
-      if (item.monthlyBalance >= 0) {
-        return '#10b981';
-      } else {
-        return '#ef4444';
-      }
-    });
-
-    planningEvolutionChartInstance = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            type: 'line',
-            label: 'Saldo Acumulado (Projeção)',
-            data: accumulatedBalances,
-            borderColor: '#0284c7', // primary blue
-            backgroundColor: 'rgba(2, 132, 199, 0.1)',
-            borderWidth: 2.5,
-            fill: true,
-            tension: 0.35,
-            pointBackgroundColor: '#0284c7',
-            pointBorderColor: '#ffffff',
-            pointBorderWidth: 1.5,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            yAxisID: 'y'
-          },
-          {
-            type: 'bar',
-            label: 'Saldo Mensal',
-            data: monthlyBalances,
-            backgroundColor: barBackgrounds,
-            borderColor: barBorders,
-            borderWidth: 1,
-            borderRadius: 4,
-            yAxisID: 'y'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: 'index',
-          intersect: false
-        },
-        plugins: {
-          legend: {
-            display: false
-          },
-          tooltip: {
-            backgroundColor: 'rgba(17, 24, 39, 0.95)',
-            padding: 12,
-            cornerRadius: 8,
-            titleFont: { family: 'Inter, sans-serif', size: 13, weight: 'bold' },
-            bodyFont: { family: 'Inter, sans-serif', size: 12 },
-            callbacks: {
-              title: function(items) {
-                if (!items.length) return '';
-                const idx = items[0].dataIndex;
-                const meta = data.monthsMeta[idx];
-                const statusLabel = meta.status === 'realized' ? 'Realizado' : (meta.status === 'current' ? 'Mês Atual (Real.+Prev.)' : 'Previsto');
-                return `${meta.name} / ${data.year} (${statusLabel})`;
-              },
-              afterTitle: function(items) {
-                if (!items.length) return '';
-                const idx = items[0].dataIndex;
-                const m = data.monthlyTotals[idx];
-                return `Receitas: ${formatCurrency(m.incomeTotal)} | Despesas: ${formatCurrency(m.expenseTotal)}`;
-              },
-              label: function(context) {
-                return `${context.dataset.label}: ${formatCurrency(context.raw)}`;
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { font: { family: 'Inter, sans-serif', weight: '600', size: 11 }, color: '#4b5563' }
-          },
-          y: {
-            grid: { color: '#f3f4f6' },
-            ticks: {
-              font: { family: 'Inter, sans-serif', size: 10 },
-              color: '#9ca3af',
-              callback: function(val) {
-                if (Math.abs(val) >= 1000) return 'R$ ' + (val / 1000).toFixed(0) + 'k';
-                return 'R$ ' + val;
-              }
-            }
-          }
-        }
-      }
-    });
-  }
-
-  function renderPlanningCompositionChart(data) {
-    const ctx = document.getElementById('planning-composition-chart');
-    if (!ctx) return;
-
-    if (planningCompositionChartInstance) {
-      planningCompositionChartInstance.destroy();
-    }
-
-    let chartLabels = [];
-    let chartValues = [];
-    let chartColors = [];
-    let chartSubtext = '';
-    let isDrilldown = false;
-
-    if (planningCompositionView === 'macro') {
-      // Visão Geral: Receitas e Macrocategorias de Despesas
-      $('#planning-bar-chart-title').html('<i class="fa-solid fa-chart-column text-emerald-600 text-sm"></i><span>Composição: Receitas e Macrocategorias</span>');
-      $('#planning-bar-chart-subtitle').text('Clique em uma barra para detalhar as categorias que a compõem');
-      $('#btn-reset-planning-bar-chart').addClass('hidden');
-
-      chartLabels = ['Receitas'];
-      chartValues = [data.summary.totalYearIncome];
-      chartColors = ['#10b981']; // Green
-
-      const macroColors = {
-        'Fixas': '#991b1b', // Dark red
-        'Variáveis Essenciais': '#ef4444', // Medium red
-        'Discricionárias': '#f87171' // Light red
-      };
-
-      data.expenseMacros.forEach(m => {
-        chartLabels.push(m.label);
-        chartValues.push(m.totalYear);
-        chartColors.push(macroColors[m.key] || '#ef4444');
-      });
-
-    } else if (planningCompositionView === 'income') {
-      // Drilldown: Detalhamento de Receitas em Verde
-      isDrilldown = true;
-      $('#planning-bar-chart-title').html('<i class="fa-solid fa-arrow-trend-up text-emerald-600 text-sm"></i><span>Detalhamento: Categorias de Receitas</span>');
-      $('#planning-bar-chart-subtitle').text('Distribuição percentual das fontes de receita no ano');
-      $('#btn-reset-planning-bar-chart').removeClass('hidden');
-
-      // Tons de verde para receitas
-      const greenTones = ['#10b981', '#059669', '#34d399', '#6ee7b7', '#16a34a', '#15803d', '#86efac'];
-      
-      data.incomeCategories.forEach((cat, idx) => {
-        chartLabels.push(cat.label);
-        chartValues.push(cat.totalYear);
-        chartColors.push(greenTones[idx % greenTones.length]);
-      });
-
-      if (chartLabels.length === 0) {
-        chartLabels = ['Sem receitas'];
-        chartValues = [0];
-        chartColors = ['#10b981'];
-      }
-
-    } else if (planningCompositionView.startsWith('macro-')) {
-      // Drilldown em uma macrocategoria específica de despesa
-      isDrilldown = true;
-      const macroKey = planningCompositionView.replace('macro-', '');
-      const macroObj = data.expenseMacros.find(m => m.key === macroKey || m.label === macroKey);
-      const macroTitle = macroObj ? macroObj.label : macroKey;
-
-      $('#planning-bar-chart-title').html(`<i class="fa-solid fa-arrow-trend-down text-red-600 text-sm"></i><span>Detalhamento: ${macroTitle}</span>`);
-      $('#planning-bar-chart-subtitle').text(`Categorias que compõem ${macroTitle}`);
-      $('#btn-reset-planning-bar-chart').removeClass('hidden');
-
-      const redTones = ['#dc2626', '#b91c1c', '#ef4444', '#f87171', '#fca5a5', '#991b1b'];
-
-      if (macroObj && macroObj.subcategories.length > 0) {
-        macroObj.subcategories.forEach((subcat, idx) => {
-          chartLabels.push(subcat.label);
-          chartValues.push(subcat.totalYear);
-          chartColors.push(redTones[idx % redTones.length]);
-        });
-      } else {
-        chartLabels = ['Sem despesas'];
-        chartValues = [0];
-        chartColors = ['#ef4444'];
-      }
-    }
-
-    // Calcula total para porcentagens
-    const chartTotal = chartValues.reduce((a, b) => a + b, 0);
-
-    planningCompositionChartInstance = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: chartLabels,
-        datasets: [{
-          data: chartValues,
-          backgroundColor: chartColors,
-          borderRadius: 6,
-          borderWidth: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        onClick: function(evt, elements) {
-          if (!elements.length) return;
-          const clickedIndex = elements[0].index;
-          
-          if (planningCompositionView === 'macro') {
-            if (clickedIndex === 0) {
-              // Clicou em "Receitas" -> drilldown para componentes de receita em verde!
-              planningCompositionView = 'income';
-              renderPlanningCompositionChart(data);
-            } else {
-              // Clicou em uma das macrocategorias de despesa
-              const macroClicked = data.expenseMacros[clickedIndex - 1];
-              if (macroClicked) {
-                planningCompositionView = 'macro-' + macroClicked.key;
-                renderPlanningCompositionChart(data);
-              }
-            }
-          }
-        },
-        plugins: {
-          legend: { display: false },
-          datalabels: {
-            display: true,
-            anchor: 'end',
-            align: 'top',
-            offset: 4,
-            font: { family: 'Inter, sans-serif', weight: 'bold', size: 10 },
-            color: '#374151',
-            formatter: function(val) {
-              if (val === 0 || chartTotal === 0) return '';
-              const pct = ((val / chartTotal) * 100).toFixed(0);
-              return `${pct}%`;
-            }
-          },
-          tooltip: {
-            backgroundColor: 'rgba(17, 24, 39, 0.95)',
-            padding: 12,
-            cornerRadius: 8,
-            titleFont: { family: 'Inter, sans-serif', size: 13, weight: 'bold' },
-            bodyFont: { family: 'Inter, sans-serif', size: 12 },
-            callbacks: {
-              label: function(context) {
-                const val = context.raw || 0;
-                const pct = chartTotal > 0 ? ((val / chartTotal) * 100).toFixed(1) : '0';
-                return `${formatCurrency(val)} (${pct}% do grupo)`;
-              },
-              afterLabel: function(context) {
-                if (planningCompositionView === 'macro') {
-                  return '👉 Clique na barra para ver detalhes';
-                }
-                return '';
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              font: { family: 'Inter, sans-serif', weight: '500', size: 11 },
-              color: '#374151',
-              callback: function(val, index) {
-                const label = chartLabels[index] || '';
-                return label.length > 14 ? label.slice(0, 12) + '...' : label;
-              }
-            }
-          },
-          y: {
-            grid: { color: '#f3f4f6' },
-            ticks: {
-              font: { family: 'Inter, sans-serif', size: 10 },
-              color: '#9ca3af',
-              callback: function(val) {
-                if (val >= 1000) return 'R$ ' + (val / 1000).toFixed(0) + 'k';
-                return 'R$ ' + val;
-              }
-            }
-          }
-        }
-      }
-    });
-  }
-
-  function showPlanningTransactionsModal(categoryName, monthNum, tipoFilter) {
-    if (!currentPlanningData) return;
-
-    const meta = currentPlanningData.monthsMeta[monthNum - 1];
-    const monthName = meta ? meta.name : `Mês ${monthNum}`;
-    const year = currentPlanningData.year;
-
-    let displayCatName = categoryName;
-    if (categoryName === '__ALL_INCOME__') displayCatName = 'Todas as Receitas';
-    if (categoryName === '__ALL_EXPENSE__') displayCatName = 'Todas as Despesas';
-
-    $('#modal-planning-tx-title').text(`${displayCatName} - ${monthName}/${year}`);
-    $('#modal-planning-tx-subtitle').text(`Status do Mês: ${meta ? (meta.status === 'realized' ? 'Realizado' : (meta.status === 'current' ? 'Mês Atual' : 'Previsto')) : ''}`);
-
-    // Filtra as transações correspondentes a este mês e categoria
-    const matchingTxs = [];
-    const txSource = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
-      ? currentLoadedTransactions
-      : (typeof applyCategoryOverrides === 'function' ? applyCategoryOverrides(GLOBAL_MOCK_TRANSACTIONS || []) : (GLOBAL_MOCK_TRANSACTIONS || []));
-
-    const currentSystemDay = currentPlanningData.currentSystemDay;
-    const currentSystemMonth = currentPlanningData.currentSystemMonth;
-    const currentSystemYear = currentPlanningData.currentSystemYear;
-
-    txSource.forEach(t => {
-      if (!t.data) return;
-      const parts = String(t.data).split('-');
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      const d = parts[2] ? parseInt(parts[2], 10) : 1;
-
-      if (y === year && m === monthNum) {
-        let matchCat = false;
-        if (categoryName === '__ALL_INCOME__') {
-          matchCat = (t.tipo === 'Entrada');
-        } else if (categoryName === '__ALL_EXPENSE__') {
-          matchCat = (t.tipo === 'Saída');
-        } else {
-          matchCat = (t.categoria === categoryName);
-          if (tipoFilter) matchCat = matchCat && (t.tipo === tipoFilter);
-        }
-
-        if (matchCat) {
-          let isRealized = true;
-          if (meta.status === 'realized') {
-            isRealized = true;
-          } else if (meta.status === 'planned') {
-            isRealized = false;
-          } else {
-            isRealized = (d <= currentSystemDay);
-          }
-
-          matchingTxs.push({
-            origem: t.origem || 'Conta',
-            descricao: t.descricao || '',
-            categoria: t.categoria || 'Outros',
-            tipo: t.tipo || 'Saída',
-            valor: parseFloat(t.valor) || 0,
-            data: t.data,
-            isRealized: isRealized
-          });
-        }
-      }
-    });
-
-    // Ordena por data decrescente
-    matchingTxs.sort((a, b) => String(b.data).localeCompare(String(a.data)));
-
-    let realizedSum = 0;
-    let plannedSum = 0;
-    matchingTxs.forEach(t => {
-      if (t.isRealized) realizedSum += t.valor;
-      else plannedSum += t.valor;
-    });
-
-    $('#modal-planning-tx-realized').text(formatCurrency(realizedSum));
-    $('#modal-planning-tx-planned').text(formatCurrency(plannedSum));
-    $('#modal-planning-tx-total').text(formatCurrency(realizedSum + plannedSum));
-
-    const $tbody = $('#modal-planning-tx-body');
-    $tbody.empty();
-
-    if (matchingTxs.length === 0) {
-      $tbody.html(`
-        <tr>
-          <td colspan="6" class="p-8 text-center text-gray-400 dark:text-slate-500 italic">
-            Nenhuma transação lançada para ${displayCatName} em ${monthName}/${year}.
-          </td>
-        </tr>
-      `);
-    } else {
-      matchingTxs.forEach(tx => {
-        const isEntrada = tx.tipo === 'Entrada';
-        const valColor = isEntrada ? 'text-emerald-600 font-bold' : 'text-gray-900 dark:text-white font-bold';
-        const prefix = isEntrada ? '+ ' : '- ';
-        const statusBadge = tx.isRealized
-          ? '<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px] font-semibold">Realizado</span>'
-          : '<span class="bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded-full text-[10px] font-semibold">Previsto</span>';
-
-        $tbody.append(`
-          <tr class="hover:bg-gray-50 dark:hover:!bg-slate-700 transition-colors">
-            <td class="p-3 text-gray-500 dark:text-slate-500 whitespace-nowrap">${tx.data}</td>
-            <td class="p-3 font-medium text-gray-800 dark:text-white">${tx.descricao}</td>
-            <td class="p-3 text-gray-600 dark:text-slate-400">${tx.categoria}</td>
-            <td class="p-3 text-gray-500 dark:text-slate-500">${tx.tipo}</td>
-            <td class="p-3 text-center">${statusBadge}</td>
-            <td class="p-3 text-right ${valColor} whitespace-nowrap">${prefix}${formatCurrency(tx.valor)}</td>
-          </tr>
-        `);
-      });
-    }
-
-    $('#modal-planning-transactions').removeClass('hidden');
-  }
-
-  // =========================================================================
-  // EDIÇÃO E EXCLUSÃO EM GRUPO NA MATRIZ FINANCEIRA ANUAL (SELEÇÃO DE INTERVALO)
-  // =========================================================================
-
-  let planningActiveRange = null; 
-  // Estrutura:
-  // {
-  //   rowElement: tr,
-  //   cat: string,
-  //   tipo: string,
-  //   catLabel: string,
-  //   startMonth: number,
-  //   endMonth: number | null
-  // }
-
-  const MONTH_SHORT_NAMES = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  const MONTH_FULL_NAMES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
-  function getDisplayCategoryName(cat) {
-    if (!cat) return '';
-    if (cat === '__ALL_INCOME__') return 'Receitas (Total)';
-    if (cat === '__ALL_EXPENSE__') return 'Despesas (Total)';
-    if (cat.startsWith('__MACRO_')) {
-      const key = cat.replace('__MACRO_', '');
-      if (key === 'Fixas') return 'Despesas Fixas';
-      if (key === 'Variáveis Essenciais') return 'Despesas Variáveis Essenciais';
-      if (key === 'Discricionárias') return 'Despesas Discricionárias';
-      return key;
-    }
-    return cat;
-  }
-
-  function handlePlanningCellClick(cellElement, cat, month, type) {
-    const $cell = $(cellElement);
-    const $row = $cell.closest('tr');
-
-    // 1. Se não houver seleção ativa, inicia a seleção no 1º mês
-    if (!planningActiveRange) {
-      planningActiveRange = {
-        rowElement: $row[0],
-        cat: cat,
-        tipo: type || 'Saída',
-        catLabel: getDisplayCategoryName(cat),
-        startMonth: month,
-        endMonth: null
-      };
-
-      // Adiciona estilo visual de início de seleção
-      $row.addClass('planning-row-active-range');
-      $cell.addClass('planning-cell-selected-endpoint');
-
-      // Feedback sutil para o usuário saber que o primeiro mês foi marcado
-      showPlanningSelectionHint(`Mês de ${MONTH_FULL_NAMES[month]} selecionado. Clique em outro mês desta mesma linha para formar o período.`);
-      return;
-    }
-
-    // 2. Se o usuário clicou em uma linha ou categoria diferente, reinicia a seleção na nova linha
-    if (planningActiveRange.rowElement !== $row[0] || planningActiveRange.cat !== cat) {
-      clearPlanningRangeSelection();
-      handlePlanningCellClick(cellElement, cat, month, type);
-      return;
-    }
-
-    // 3. Se clicou no mesmo mês em que já havia iniciado (sem ter fechado o range)
-    if (planningActiveRange.startMonth === month && planningActiveRange.endMonth === null) {
-      // Clicou novamente na mesma célula: abre o modal de visualização normal de transações deste mês
-      clearPlanningRangeSelection();
-      showPlanningTransactionsModal(cat, month, type);
-      return;
-    }
-
-    // 4. Fechou o período (2º clique na mesma linha)!
-    planningActiveRange.endMonth = month;
-    applyPlanningRangeHighlight();
-    showPlanningRangeActionBar();
-  }
-
-  function applyPlanningRangeHighlight() {
-    if (!planningActiveRange || !planningActiveRange.rowElement || !planningActiveRange.startMonth || !planningActiveRange.endMonth) return;
-
-    const $row = $(planningActiveRange.rowElement);
-    const minM = Math.min(planningActiveRange.startMonth, planningActiveRange.endMonth);
-    const maxM = Math.max(planningActiveRange.startMonth, planningActiveRange.endMonth);
-
-    // Limpa classes anteriores na linha
-    $row.find('.planning-cell-action').removeClass('planning-cell-selected-endpoint planning-cell-selected-range');
-
-    $row.find('.planning-cell-action').each(function() {
-      const m = parseInt($(this).data('month'), 10);
-      if (m === minM || m === maxM) {
-        $(this).addClass('planning-cell-selected-endpoint');
-      } else if (m > minM && m < maxM) {
-        $(this).addClass('planning-cell-selected-range');
-      }
-    });
-
-    $row.addClass('planning-row-active-range');
-  }
-
-  function showPlanningRangeActionBar() {
-    if (!planningActiveRange) return;
-
-    const minM = Math.min(planningActiveRange.startMonth, planningActiveRange.endMonth);
-    const maxM = Math.max(planningActiveRange.startMonth, planningActiveRange.endMonth);
-    const count = (maxM - minM) + 1;
-
-    const catName = planningActiveRange.catLabel;
-    const periodText = (minM === maxM)
-      ? `${MONTH_SHORT_NAMES[minM]}`
-      : `${MONTH_SHORT_NAMES[minM]} a ${MONTH_SHORT_NAMES[maxM]}`;
-
-    $('#planning-range-category-name').text(catName);
-    $('#planning-range-months-badge').text(periodText);
-    $('#planning-range-count-badge').text(`(${count} ${count === 1 ? 'mês' : 'meses'} selecionados)`);
-    $('#planning-range-action-desc').html(
-      `Linha <strong class="text-gray-800 dark:text-white font-semibold">${catName}</strong> selecionada de <strong class="text-primary dark:text-blue-400 font-semibold">${MONTH_FULL_NAMES[minM]}</strong> até <strong class="text-primary dark:text-blue-400 font-semibold">${MONTH_FULL_NAMES[maxM]}</strong>.`
-    );
-
-    const $bar = $('#planning-range-action-bar');
-    $bar.removeClass('hidden');
-
-    // Rola suavemente para a barra de ação se não estiver visível
-    const barTop = $bar.offset().top;
-    if (window.scrollY > barTop) {
-      $('html, body').animate({ scrollTop: barTop - 80 }, 200);
-    }
-  }
-
-  function clearPlanningRangeSelection() {
-    if (planningActiveRange && planningActiveRange.rowElement) {
-      const $row = $(planningActiveRange.rowElement);
-      $row.removeClass('planning-row-active-range');
-      $row.find('.planning-cell-action').removeClass('planning-cell-selected-endpoint planning-cell-selected-range');
-    }
-    planningActiveRange = null;
-    $('#planning-range-action-bar').addClass('hidden');
-  }
-
-  function showPlanningSelectionHint(message) {
-    // Exibe banner ou tooltip informativo temporário
-    const $bar = $('#planning-range-action-bar');
-    $('#planning-range-category-name').text(planningActiveRange.catLabel);
-    $('#planning-range-months-badge').text(MONTH_SHORT_NAMES[planningActiveRange.startMonth]);
-    $('#planning-range-count-badge').text('(1º mês marcado)');
-    $('#planning-range-action-desc').text(message);
-    $bar.removeClass('hidden');
-  }
-
-  // ==========================================
-  // AÇÃO 1: ADICIONAR LANÇAMENTO EM GRUPO
-  // ==========================================
-  function openPlanningRangeAddModal() {
-    if (!planningActiveRange) return;
-
-    const minM = Math.min(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const maxM = Math.max(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const count = (maxM - minM) + 1;
-
-    const catName = planningActiveRange.catLabel;
-    const periodText = (minM === maxM)
-      ? `${MONTH_SHORT_NAMES[minM]}`
-      : `${MONTH_SHORT_NAMES[minM]} a ${MONTH_SHORT_NAMES[maxM]}`;
-
-    $('#modal-range-add-cat-label').text(catName);
-    $('#modal-range-add-months-label').text(`${periodText} (${count} ${count === 1 ? 'mês' : 'meses'})`);
-    $('#modal-range-add-subtitle').text(`Adicione o mesmo lançamento em todos os ${count} meses selecionados.`);
-
-    // Sugestão de descrição baseada na categoria
-    let defaultDesc = '';
-    if (catName.toLowerCase().includes('moradia')) defaultDesc = 'Aluguel / Condomínio';
-    else if (catName.toLowerCase().includes('fixas')) defaultDesc = 'Conta de Telefone / Internet';
-    else if (catName.toLowerCase().includes('saúde') || catName.toLowerCase().includes('saude')) defaultDesc = 'Plano de Saúde';
-    else if (catName.toLowerCase().includes('educação')) defaultDesc = 'Mensalidade Escolar';
-    else if (catName.toLowerCase().includes('receita')) defaultDesc = 'Prestação de Serviço';
-    $('#modal-range-add-desc').val(defaultDesc).focus();
-    $('#modal-range-add-val').val('');
-
-    $('#modal-planning-range-add').removeClass('hidden');
-  }
-
-  function submitPlanningRangeAdd() {
-    if (!planningActiveRange) return;
-
-    const minM = Math.min(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const maxM = Math.max(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const year = currentPlanningData ? currentPlanningData.year : currentPlanningYear;
-
-    const desc = $('#modal-range-add-desc').val().trim();
-    const val = parseFloat($('#modal-range-add-val').val());
-    const day = parseInt($('#modal-range-add-day').val(), 10) || 10;
-    const origem = $('#modal-range-add-origem').val().trim() || 'Conta Corrente';
-
-    if (!desc) {
-      alert('Informe a descrição do lançamento.');
-      return;
-    }
-    if (isNaN(val) || val <= 0) {
-      alert('Informe um valor válido.');
-      return;
-    }
-
-    // Determina tipo e categoria real
-    let realCat = planningActiveRange.cat;
-    let tipo = planningActiveRange.tipo || 'Saída';
-
-    if (realCat === '__ALL_INCOME__') {
-      realCat = 'Salário';
-      tipo = 'Entrada';
-    } else if (realCat === '__ALL_EXPENSE__') {
-      realCat = 'Outros';
-      tipo = 'Saída';
-    } else if (realCat.startsWith('__MACRO_')) {
-      const macroKey = realCat.replace('__MACRO_', '');
-      if (macroKey === 'Fixas') realCat = 'Moradia';
-      else if (macroKey === 'Variáveis Essenciais') realCat = 'Alimentação';
-      else realCat = 'Lazer';
-      tipo = 'Saída';
-    }
-
-    // Gera o lote de lançamentos para cada mês do intervalo
-    const batchItems = [];
-    for (let m = minM; m <= maxM; m++) {
-      const maxDaysInMonth = new Date(year, m, 0).getDate();
-      const safeDay = Math.min(day, maxDaysInMonth);
-      const mStr = String(m).padStart(2, '0');
-      const dStr = String(safeDay).padStart(2, '0');
-      batchItems.push({
-        origem: origem,
-        descricao: desc,
-        categoria: realCat,
-        tipo: tipo,
-        valor: val,
-        data: `${year}-${mStr}-${dStr}`
-      });
-    }
-
-    const $btn = $('#btn-submit-range-add');
-    const origHtml = $btn.html();
-    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Gravando...');
-
-    function onAddSuccess() {
-      $btn.prop('disabled', false).html(origHtml);
-      $('#modal-planning-range-add').addClass('hidden');
-      clearPlanningRangeSelection();
-
-      // Recarrega todos os dados
-      if (typeof loadTransactions === 'function') loadTransactions();
-      if (typeof loadDashboard === 'function') loadDashboard();
-      if (typeof loadPlanning === 'function') loadPlanning();
-    }
-
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      google.script.run
-        .withSuccessHandler(onAddSuccess)
-        .withFailureHandler(function(err) {
-          alert('Erro ao gravar lançamentos: ' + (err.message || err));
-          $btn.prop('disabled', false).html(origHtml);
-        })
-        .saveBatchTransactions(batchItems);
-    } else {
-      // Ambiente Local AI Studio
-      setTimeout(() => {
-        if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') {
-          GLOBAL_MOCK_BACKUP = JSON.stringify(GLOBAL_MOCK_TRANSACTIONS);
-          batchItems.forEach(item => GLOBAL_MOCK_TRANSACTIONS.push(item));
-        }
-        onAddSuccess();
-      }, 500);
-    }
-  }
-
-  // ==========================================
-  // AÇÃO 2: EXCLUIR LANÇAMENTOS DO PERÍODO EM GRUPO
-  // ==========================================
-  let currentRangeDeleteCandidates = [];
-
-  function openPlanningRangeDeleteModal() {
-    if (!planningActiveRange) return;
-
-    const minM = Math.min(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const maxM = Math.max(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const count = (maxM - minM) + 1;
-    const year = currentPlanningData ? currentPlanningData.year : currentPlanningYear;
-
-    const catName = planningActiveRange.catLabel;
-    const periodText = (minM === maxM)
-      ? `${MONTH_SHORT_NAMES[minM]}`
-      : `${MONTH_SHORT_NAMES[minM]} a ${MONTH_SHORT_NAMES[maxM]}`;
-
-    $('#modal-range-delete-cat-label').text(catName);
-    $('#modal-range-delete-months-label').text(`${periodText}/${year} (${count} ${count === 1 ? 'mês' : 'meses'})`);
-    $('#modal-range-delete-subtitle').text(`Exclusão de transações na linha "${catName}" de ${MONTH_FULL_NAMES[minM]} a ${MONTH_FULL_NAMES[maxM]}.`);
-
-    // Busca as transações existentes no período nesta categoria
-    const targetCat = planningActiveRange.cat;
-    const targetTipo = planningActiveRange.tipo;
-    const txSource = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
-      ? currentLoadedTransactions
-      : (typeof applyCategoryOverrides === 'function' ? applyCategoryOverrides(GLOBAL_MOCK_TRANSACTIONS || []) : (GLOBAL_MOCK_TRANSACTIONS || []));
-
-    currentRangeDeleteCandidates = [];
-
-    txSource.forEach((t, idx) => {
-      if (!t.data) return;
-      const parts = String(t.data).split('-');
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-
-      if (y === year && m >= minM && m <= maxM) {
-        let match = false;
-        if (targetCat === '__ALL_INCOME__') {
-          match = (t.tipo === 'Entrada');
-        } else if (targetCat === '__ALL_EXPENSE__') {
-          match = (t.tipo === 'Saída');
-        } else if (targetCat.startsWith('__MACRO_')) {
-          const macroKey = targetCat.replace('__MACRO_', '');
-          const macroOfItem = (typeof getMacroCategory === 'function')
-            ? getMacroCategory(t.categoria, t.descricao)
-            : macroKey;
-          match = (macroOfItem === macroKey && (!targetTipo || t.tipo === targetTipo));
-        } else {
-          match = (t.categoria === targetCat && (!targetTipo || t.tipo === targetTipo));
-        }
-
-        if (match) {
-          currentRangeDeleteCandidates.push({
-            id: t.id !== undefined ? t.id : `tx_${idx}_${t.data}_${t.valor}`,
-            index: idx,
-            data: t.data,
-            descricao: t.descricao || 'Sem descrição',
-            categoria: t.categoria || 'Outros',
-            tipo: t.tipo || 'Saída',
-            valor: parseFloat(t.valor) || 0
-          });
-        }
-      }
-    });
-
-    // Renderiza a lista de itens a serem excluídos
-    const $list = $('#range-delete-tx-list');
-    $list.empty();
-
-    if (currentRangeDeleteCandidates.length === 0) {
-      $list.html(`
-        <div class="p-6 text-center text-gray-400 dark:text-slate-500 italic">
-          Nenhum lançamento encontrado nesta linha para o período ${periodText}/${year}.
-        </div>
-      `);
-      $('#check-delete-all-range').prop('disabled', true).prop('checked', false);
-      $('#range-delete-items-count').text('0');
-      $('#range-delete-total-value').text('Total: R$ 0,00');
-      $('#btn-confirm-range-delete').prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
-    } else {
-      $('#check-delete-all-range').prop('disabled', false).prop('checked', true);
-      $('#btn-confirm-range-delete').prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
-
-      currentRangeDeleteCandidates.forEach((item, i) => {
-        const valFormatted = formatCurrency(item.valor);
-        const isEntrada = item.tipo === 'Entrada';
-        const colorClass = isEntrada ? 'text-emerald-600' : 'text-gray-900 dark:text-white';
-
-        $list.append(`
-          <div class="p-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:!bg-slate-700 transition-colors">
-            <label class="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 mr-3">
-              <input type="checkbox" class="check-delete-range-item rounded text-rose-600 focus:ring-rose-500" value="${i}" checked>
-              <div class="truncate">
-                <span class="font-medium text-gray-800 dark:text-white text-xs">${item.descricao}</span>
-                <span class="text-[10px] text-gray-400 dark:text-slate-500 block">${item.data} • ${item.categoria}</span>
-              </div>
-            </label>
-            <span class="font-semibold text-xs whitespace-nowrap ${colorClass}">${valFormatted}</span>
-          </div>
-        `);
-      });
-
-      updateRangeDeleteSummary();
-    }
-
-    $('#modal-planning-range-delete').removeClass('hidden');
-  }
-
-  function updateRangeDeleteSummary() {
-    const checkedBoxes = $('.check-delete-range-item:checked');
-    let totalVal = 0;
-
-    checkedBoxes.each(function() {
-      const idx = parseInt($(this).val(), 10);
-      const item = currentRangeDeleteCandidates[idx];
-      if (item) totalVal += item.valor;
-    });
-
-    $('#range-delete-items-count').text(checkedBoxes.length);
-    $('#range-delete-total-value').text(`Total: ${formatCurrency(totalVal)}`);
-
-    if (checkedBoxes.length === 0) {
-      $('#btn-confirm-range-delete').prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
-    } else {
-      $('#btn-confirm-range-delete').prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
-    }
-  }
-
-  function submitPlanningRangeDelete() {
-    if (!planningActiveRange) return;
-
-    const checkedBoxes = $('.check-delete-range-item:checked');
-    if (checkedBoxes.length === 0) {
-      alert('Nenhum lançamento selecionado para exclusão.');
-      return;
-    }
-
-    const itemsToDelete = [];
-    checkedBoxes.each(function() {
-      const idx = parseInt($(this).val(), 10);
-      const item = currentRangeDeleteCandidates[idx];
-      if (item) itemsToDelete.push(item);
-    });
-
-    if (!confirm(`Tem certeza que deseja excluir os ${itemsToDelete.length} lançamentos selecionados do período?`)) {
-      return;
-    }
-
-    const $btn = $('#btn-confirm-range-delete');
-    const origHtml = $btn.html();
-    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Excluindo...');
-
-    function onDeleteSuccess() {
-      $btn.prop('disabled', false).html(origHtml);
-      $('#modal-planning-range-delete').addClass('hidden');
-      clearPlanningRangeSelection();
-
-      // Recarrega todos os dados
-      if (typeof loadTransactions === 'function') loadTransactions();
-      if (typeof loadDashboard === 'function') loadDashboard();
-      if (typeof loadPlanning === 'function') loadPlanning();
-    }
-
-    const minM = Math.min(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const maxM = Math.max(planningActiveRange.startMonth, planningActiveRange.endMonth || planningActiveRange.startMonth);
-    const year = currentPlanningData ? currentPlanningData.year : currentPlanningYear;
-
-    // Se todos foram selecionados, chama a função otimizada de deletar o período e categoria
-    const isAllChecked = (checkedBoxes.length === currentRangeDeleteCandidates.length);
-
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      if (isAllChecked) {
-        google.script.run
-          .withSuccessHandler(onDeleteSuccess)
-          .withFailureHandler(function(err) {
-            alert('Erro ao excluir: ' + (err.message || err));
-            $btn.prop('disabled', false).html(origHtml);
-          })
-          .deleteTransactionsRange(year, minM, maxM, planningActiveRange.cat, planningActiveRange.tipo);
-      } else {
-        // Exclusão granular por row indices / filtro de transações
-        // Registra ids ou remove itens
-        itemsToDelete.forEach(it => {
-          if (typeof DELETED_OVERRIDES !== 'undefined') {
-            DELETED_OVERRIDES.add(it.id);
-          }
-        });
-        if (typeof saveDeletedOverridesToStorage === 'function') {
-          saveDeletedOverridesToStorage();
-        }
-        onDeleteSuccess();
-      }
-    } else {
-      // Mock Local AI Studio: remove de GLOBAL_MOCK_TRANSACTIONS
-      setTimeout(() => {
-        if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') {
-          itemsToDelete.forEach(it => {
-            const fIdx = GLOBAL_MOCK_TRANSACTIONS.findIndex(t => 
-              t.data === it.data && t.descricao === it.descricao && Math.abs(parseFloat(t.valor) - it.valor) < 0.01
-            );
-            if (fIdx !== -1) {
-              GLOBAL_MOCK_TRANSACTIONS.splice(fIdx, 1);
-            }
-          });
-        }
-        onDeleteSuccess();
-      }, 500);
-    }
-  }
 
   // Dark Mode Logic
   $(function() {
@@ -5110,5 +3286,739 @@
         }
     }
   });
+
+</script><script>
+// State Variables
+let scCurrentDate = new Date();
+let scTargets = JSON.parse(localStorage.getItem('finance_sc_targets')) || {};
+let scGoals = JSON.parse(localStorage.getItem('finance_sc_goals')) || [];
+let scClosedMonths = JSON.parse(localStorage.getItem('finance_sc_closed')) || {};
+
+const scFormatMoney = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+function scSaveData() {
+  localStorage.setItem('finance_sc_targets', JSON.stringify(scTargets));
+  localStorage.setItem('finance_sc_goals', JSON.stringify(scGoals));
+  localStorage.setItem('finance_sc_closed', JSON.stringify(scClosedMonths));
+}
+
+function loadSpendingControl() {
+  scRender();
+}
+
+function scRender() {
+  const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const monthVal = $('#filter-month').val();
+  const yearVal = $('#filter-year').val();
+  const now = new Date();
+  const m = monthVal === 'all' ? now.getMonth() : parseInt(monthVal) - 1;
+  const y = yearVal === 'all' ? now.getFullYear() : parseInt(yearVal);
+  // Also sync scCurrentDate for any residual usage
+  scCurrentDate.setMonth(m);
+  scCurrentDate.setFullYear(y);
+  
+  const txs = (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : [];
+  const parsedTxs = txs.map(t => {
+    const d = new Date(t.data + 'T00:00:00');
+    return { ...t, parsedDate: d };
+  });
+
+  const catStats = {};
+  parsedTxs.forEach(t => {
+    if(!t.categoria) return;
+    if(!catStats[t.categoria]) {
+      catStats[t.categoria] = { sum: 0, months: new Set(), tipo: t.tipo };
+    }
+    catStats[t.categoria].sum += t.valor;
+    catStats[t.categoria].months.add(`${t.parsedDate.getFullYear()}-${t.parsedDate.getMonth()}`);
+  });
+  
+  const histAvg = {};
+  for(let c in catStats) {
+    const numMonths = Math.max(1, catStats[c].months.size);
+    histAvg[c] = catStats[c].sum / numMonths;
+  }
+  
+  const currentMonthTxs = parsedTxs.filter(t => t.parsedDate.getMonth() === m && t.parsedDate.getFullYear() === y);
+  
+  const realized = {};
+  let totalIncome = 0;
+  let totalExpense = 0;
+  
+  currentMonthTxs.forEach(t => {
+    if(!t.categoria) return;
+    if(!realized[t.categoria]) realized[t.categoria] = 0;
+    realized[t.categoria] += t.valor;
+    
+    if(t.tipo === 'Entrada') totalIncome += t.valor;
+    else if(t.tipo === 'Saída') totalExpense += t.valor;
+  });
+  
+  const totalEconomy = totalIncome - totalExpense;
+  
+  $('#sc-summary-incomes').text(scFormatMoney(totalIncome));
+  $('#sc-summary-expenses').text(scFormatMoney(totalExpense));
+  $('#sc-summary-savings').text(scFormatMoney(totalEconomy));
+  
+  const allCategories = (typeof GLOBAL_CATEGORIES !== 'undefined') ? GLOBAL_CATEGORIES : [];
+
+  let projectedEconomy = 0;
+  allCategories.forEach(cat => {
+    const isIncome = cat.profile.toLowerCase().includes('receita') || cat.profile.toLowerCase().includes('salário');
+    const avg = histAvg[cat.name] || 0;
+    const target = scTargets[cat.name] !== undefined ? scTargets[cat.name] : avg;
+    if (isIncome) {
+      projectedEconomy += (target - avg);
+    } else {
+      projectedEconomy += (avg - target);
+    }
+  });
+
+  const totalMonthlyTarget = scGoals.reduce((acc, g) => acc + (parseFloat(g.monthly)||0), 0);
+  $('#sc-summary-goal').text(scFormatMoney(totalMonthlyTarget));
+  
+  let totalProgress = totalMonthlyTarget > 0 ? (projectedEconomy / totalMonthlyTarget) * 100 : 0;
+  if (totalProgress < 0) totalProgress = 0;
+  
+  $('#sc-tracking-goal-val').text(scFormatMoney(totalMonthlyTarget));
+  $('#sc-tracking-saved-val').text(scFormatMoney(projectedEconomy > 0 ? projectedEconomy : 0));
+  $('#sc-tracking-progress-text').text(`${totalProgress.toFixed(0)}%`);
+  $('#sc-tracking-progress-bar').css('width', `${Math.min(totalProgress, 100)}%`);
+  
+  let expensesHtml = '';
+  let incomesHtml = '';
+  
+  const today = new Date();
+  const isPastMonth = y < today.getFullYear() || (y === today.getFullYear() && m < today.getMonth());
+  const isFutureMonth = y > today.getFullYear() || (y === today.getFullYear() && m > today.getMonth());
+  
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  let daysPassed = daysInMonth;
+  
+  if (!isPastMonth && !isFutureMonth) {
+    daysPassed = today.getDate();
+  } else if (isFutureMonth) {
+    daysPassed = 1;
+  }
+
+  let statusClass = "text-gray-600 bg-gray-100 dark:bg-slate-800 dark:text-slate-400";
+  let statusText = "Em andamento";
+  
+  if (projectedEconomy >= totalMonthlyTarget) {
+    const extra = projectedEconomy - totalMonthlyTarget;
+    statusText = `Projetado: Atinge (+${scFormatMoney(extra)})`;
+    statusClass = "text-emerald-700 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400";
+  } else {
+    const faltou = totalMonthlyTarget - projectedEconomy;
+    statusText = `Projetado: Faltam ${scFormatMoney(faltou)}`;
+    statusClass = "text-yellow-700 bg-yellow-100 dark:bg-yellow-900/40 dark:text-yellow-400";
+  }
+  
+  $('#sc-summary-status')
+    .text(statusText)
+    .removeClass()
+    .addClass(`text-[11px] font-bold px-2 py-0.5 rounded ${statusClass}`);
+  
+  const monthKey = `${y}-${m}`;
+  if (isPastMonth && !scClosedMonths[monthKey]) {
+    if (totalEconomy > 0) {
+      const totalTargetGoals = scGoals.reduce((a, b) => a + (parseFloat(b.target)||0), 0);
+      scGoals.forEach(g => {
+        const weight = totalTargetGoals > 0 ? (parseFloat(g.target)||0) / totalTargetGoals : 0;
+        const dist = totalEconomy * weight;
+        g.current = (parseFloat(g.current)||0) + dist;
+      });
+    }
+    scClosedMonths[monthKey] = { economy: totalEconomy, distributed: true };
+    scSaveData();
+  }
+
+  allCategories.forEach(cat => {
+    const isIncome = cat.profile.toLowerCase().includes('receita') || cat.profile.toLowerCase().includes('salário');
+    const tipo = isIncome ? 'Entrada' : 'Saída';
+    
+    const avg = histAvg[cat.name] || 0;
+    const target = scTargets[cat.name] !== undefined ? scTargets[cat.name] : avg;
+    const real = realized[cat.name] || 0;
+    
+    let proj = 0;
+    if (isPastMonth) {
+      proj = real;
+    } else if (isFutureMonth) {
+      proj = 0;
+    } else {
+      proj = (real / Math.max(1, daysPassed)) * daysInMonth;
+    }
+    
+    let statHtml = '';
+    let resultText = 'Em andamento';
+    
+    if (tipo === 'Saída') {
+      if (isPastMonth) {
+        if (real <= target) resultText = `<span class="text-emerald-600">Atingida (-${scFormatMoney(target - real)})</span>`;
+        else resultText = `<span class="text-red-600">Não atingida (+${scFormatMoney(real - target)})</span>`;
+        statHtml = '-';
+      } else if (!isFutureMonth) {
+        if (proj <= target) statHtml = `<span class="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-bold">🟢 Dentro</span>`;
+        else if (proj <= target * 1.1) statHtml = `<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-lg text-[10px] font-bold">🟡 Atenção</span>`;
+        else statHtml = `<span class="px-2 py-1 bg-red-100 text-red-800 rounded-lg text-[10px] font-bold">🔴 Acima</span>`;
+        resultText = 'Em andamento';
+      } else {
+        statHtml = '-';
+        resultText = '-';
+      }
+    } else {
+      if (isPastMonth) {
+        if (real >= target) resultText = `<span class="text-emerald-600">Atingida (+${scFormatMoney(real - target)})</span>`;
+        else resultText = `<span class="text-red-600">Não atingida (-${scFormatMoney(target - real)})</span>`;
+        statHtml = '-';
+      } else if (!isFutureMonth) {
+        if (proj >= target) statHtml = `<span class="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-bold">🟢 Dentro</span>`;
+        else if (proj >= target * 0.9) statHtml = `<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-lg text-[10px] font-bold">🟡 Atenção</span>`;
+        else statHtml = `<span class="px-2 py-1 bg-red-100 text-red-800 rounded-lg text-[10px] font-bold">🔴 Abaixo</span>`;
+        resultText = 'Em andamento';
+      } else {
+        statHtml = '-';
+        resultText = '-';
+      }
+    }
+    
+    const row = `
+      <tr class="hover:bg-gray-50/50 transition-colors cursor-pointer" onclick="scOpenTargetModal('${cat.name}', ${avg})">
+        <td class="px-5 py-3 text-gray-800 font-medium">${cat.name}</td>
+        <td class="px-5 py-3 text-right text-gray-500">${scFormatMoney(avg)}</td>
+        <td class="px-5 py-3 text-right font-bold text-gray-900 border-b border-gray-200 border-dashed hover:bg-gray-100">${scFormatMoney(target)}</td>
+        <td class="px-5 py-3 text-right text-gray-700">${scFormatMoney(real)}</td>
+        <td class="px-5 py-3 text-right text-gray-500 italic">${scFormatMoney(proj)}</td>
+        <td class="px-5 py-3 text-center">${statHtml}</td>
+        <td class="px-5 py-3 font-medium">${resultText}</td>
+      </tr>
+    `;
+    
+    if (tipo === 'Saída') expensesHtml += row;
+    else incomesHtml += row;
+  });
+  
+  if (!expensesHtml) expensesHtml = `<tr><td colspan="7" class="px-5 py-4 text-center text-gray-500">Nenhuma despesa encontrada.</td></tr>`;
+  if (!incomesHtml) incomesHtml = `<tr><td colspan="7" class="px-5 py-4 text-center text-gray-500">Nenhuma receita encontrada.</td></tr>`;
+  
+  $('#sc-expenses-tbody').html(expensesHtml);
+  $('#sc-incomes-tbody').html(incomesHtml);
+
+  scRenderGoals();
+}
+
+function scRenderGoals() {
+  const totalTarget = scGoals.reduce((acc, g) => acc + (parseFloat(g.target)||0), 0);
+  const totalMonthly = scGoals.reduce((acc, g) => acc + (parseFloat(g.monthly)||0), 0);
+  
+  $('#sc-goals-total-target').text(scFormatMoney(totalTarget));
+  $('#sc-goals-total-monthly').text(scFormatMoney(totalMonthly));
+  $('#sc-tracking-total-goals').text(scFormatMoney(totalTarget));
+  
+  let gridHtml = '';
+  scGoals.forEach((g, idx) => {
+    const prog = g.target > 0 ? (g.current / g.target) * 100 : 0;
+    const missing = g.target - g.current;
+    let monthsLeft = '-';
+    if (missing > 0 && g.monthly > 0) {
+      monthsLeft = Math.ceil(missing / g.monthly) + ' meses';
+    } else if (missing <= 0) {
+      monthsLeft = 'Atingido!';
+    }
+    
+    const weight = totalTarget > 0 ? (g.target / totalTarget) * 100 : 0;
+    
+    gridHtml += `
+      <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow relative">
+        <button onclick="scOpenGoalModal(${idx})" class="absolute top-4 right-4 text-gray-400 hover:text-primary transition-colors">
+          <i class="fa-solid fa-pen"></i>
+        </button>
+        <h4 class="font-bold text-gray-900 text-lg mb-4 pr-6">${g.name}</h4>
+        
+        <div class="space-y-3">
+          <div class="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
+            <span class="text-gray-500">Meta:</span>
+            <span class="font-bold text-gray-800">${scFormatMoney(g.target)}</span>
+          </div>
+          <div class="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
+            <span class="text-gray-500">Acumulado:</span>
+            <span class="font-bold text-emerald-600">${scFormatMoney(g.current)}</span>
+          </div>
+          <div class="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
+            <span class="text-gray-500">Aporte mensal:</span>
+            <span class="font-medium text-gray-700">${scFormatMoney(g.monthly)}</span>
+          </div>
+          <div class="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
+            <span class="text-gray-500">Previsão:</span>
+            <span class="font-medium text-gray-700">${monthsLeft}</span>
+          </div>
+          <div class="pt-2">
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-semibold text-gray-700">Progresso</span>
+              <span class="font-bold text-primary">${prog.toFixed(1)}%</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-2">
+              <div class="bg-primary h-2 rounded-full" style="width: ${Math.min(prog, 100)}%"></div>
+            </div>
+            <div class="text-[10px] text-gray-400 text-right mt-1">Peso: ${weight.toFixed(1)}%</div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  
+  if (scGoals.length === 0) {
+    gridHtml = `
+      <div class="col-span-full py-12 text-center text-gray-500 border-2 border-dashed border-gray-200 rounded-xl">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <i class="fa-solid fa-bullseye text-2xl text-gray-400"></i>
+        </div>
+        <p class="font-medium">Nenhum objetivo cadastrado.</p>
+        <p class="text-sm mt-1">Clique em "Novo Objetivo" para começar.</p>
+      </div>
+    `;
+  }
+  
+  $('#sc-goals-grid').html(gridHtml);
+}
+
+let currentEditingCategory = null;
+
+window.scOpenTargetModal = function(catName, avg) {
+  currentEditingCategory = catName;
+  $('#sc-cat-target-subtitle').text(`Categoria: ${catName}`);
+  $('#sc-cat-target-avg').text(scFormatMoney(avg));
+  $('#sc-cat-target-input').val(scTargets[catName] !== undefined ? scTargets[catName] : avg);
+  $('#modal-sc-category-target').removeClass('hidden');
+};
+
+$(document).ready(function() {
+  $(document).on('click', '#btn-sc-close-cat-target', () => {
+    $('#modal-sc-category-target').addClass('hidden');
+  });
+
+  $(document).on('click', '#btn-sc-save-cat-target', () => {
+    const val = parseFloat($('#sc-cat-target-input').val());
+    if (!isNaN(val) && currentEditingCategory) {
+      scTargets[currentEditingCategory] = val;
+      scSaveData();
+      scRender();
+      $('#modal-sc-category-target').addClass('hidden');
+    }
+  });
+
+  window.scOpenGoalModal = function(idx) {
+    if (idx !== undefined && scGoals[idx]) {
+      const g = scGoals[idx];
+      $('#sc-goal-id').val(idx);
+      $('#sc-goal-name').val(g.name);
+      $('#sc-goal-target').val(g.target);
+      $('#sc-goal-current').val(g.current);
+      $('#sc-goal-monthly').val(g.monthly);
+      $('#sc-goal-modal-title').text('Editar Objetivo');
+      $('#btn-sc-delete-goal').removeClass('hidden');
+    } else {
+      $('#form-sc-goal')[0].reset();
+      $('#sc-goal-id').val('');
+      $('#sc-goal-modal-title').text('Novo Objetivo');
+      $('#btn-sc-delete-goal').addClass('hidden');
+    }
+    $('#modal-sc-goal').removeClass('hidden');
+  };
+
+  $(document).on('click', '#btn-sc-add-goal, #sc-btn-add-goal', () => scOpenGoalModal());
+
+  $(document).on('click', '#btn-sc-close-goal, #btn-sc-close-goal-x', () => {
+    $('#modal-sc-goal').addClass('hidden');
+  });
+
+  $(document).on('submit', '#form-sc-goal', (e) => {
+    e.preventDefault();
+    const idStr = $('#sc-goal-id').val();
+    const name = $('#sc-goal-name').val().trim();
+    const target = parseFloat($('#sc-goal-target').val());
+    const current = parseFloat($('#sc-goal-current').val());
+    const monthly = parseFloat($('#sc-goal-monthly').val());
+    
+    if(!name || isNaN(target) || isNaN(current) || isNaN(monthly)) return;
+    
+    const g = { id: Date.now(), name, target, current, monthly };
+    
+    if (idStr !== '') {
+      const idx = parseInt(idStr);
+      scGoals[idx] = { ...scGoals[idx], ...g };
+    } else {
+      scGoals.push(g);
+    }
+    
+    scSaveData();
+    scRender();
+    $('#modal-sc-goal').addClass('hidden');
+  });
+
+  $(document).on('click', '#btn-sc-delete-goal', () => {
+    const idStr = $('#sc-goal-id').val();
+    if (idStr !== '') {
+      const idx = parseInt(idStr);
+      const g = scGoals[idx];
+      if (g.current > 0) {
+        if (!confirm(`Este objetivo possui ${scFormatMoney(g.current)} acumulados. Tem certeza que deseja excluí-lo? O valor não será automaticamente redistribuído.`)) {
+          return;
+        }
+      } else {
+        if (!confirm('Deseja realmente excluir este objetivo?')) return;
+      }
+      
+      scGoals.splice(idx, 1);
+      scSaveData();
+      scRender();
+      $('#modal-sc-goal').addClass('hidden');
+    }
+  });
+
+  $(document).on('click', '#sc-btn-prev-month', () => {
+    scCurrentDate.setMonth(scCurrentDate.getMonth() - 1);
+    scRender();
+  });
+
+  $(document).on('click', '#sc-btn-next-month', () => {
+    scCurrentDate.setMonth(scCurrentDate.getMonth() + 1);
+    scRender();
+  });
+
+  $(document).on('click', '#sc-tab-tracking', () => {
+    $('#sc-tab-tracking')
+      .removeClass('text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white')
+      .addClass('bg-primary text-white shadow-md');
+    $('#sc-tab-goals')
+      .removeClass('bg-primary text-white shadow-md')
+      .addClass('text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white');
+    $('#sc-view-tracking').removeClass('hidden');
+    $('#sc-view-goals').addClass('hidden');
+  });
+
+  $(document).on('click', '#sc-tab-goals', () => {
+    $('#sc-tab-goals')
+      .removeClass('text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white')
+      .addClass('bg-primary text-white shadow-md');
+    $('#sc-tab-tracking')
+      .removeClass('bg-primary text-white shadow-md')
+      .addClass('text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white');
+    $('#sc-view-goals').removeClass('hidden');
+    $('#sc-view-tracking').addClass('hidden');
+  });
+});
+
+  // ==========================================
+  // PLANEJAMENTO FINANCEIRO ANUAL
+  // ==========================================
+  let currentPlanningYear = new Date().getFullYear();
+      let planningDataCache = null;
+
+  function initPlanningYearSelect() {
+    const select = $('#planning-year-select');
+    if (select.children().length > 0) return;
+    const current = new Date().getFullYear();
+    for (let y = current - 2; y <= current + 2; y++) {
+      select.append(`<option value="${y}" ${y === current ? 'selected' : ''}>${y}</option>`);
+    }
+  }
+
+  function loadPlanning() {
+    initPlanningYearSelect();
+    $('#planning-loading').removeClass('hidden');
+    $('#planning-matrix-container').addClass('hidden');
+    
+    currentPlanningYear = parseInt($('#planning-year-select').val());
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          planningDataCache = data;
+          renderPlanning(data);
+          $('#planning-loading').addClass('hidden');
+          $('#planning-matrix-container').removeClass('hidden');
+        })
+        .withFailureHandler(function(err) {
+          console.error(err);
+          alert('Erro ao carregar planejamento.');
+          $('#planning-loading').addClass('hidden');
+        })
+        .getPlanningData(currentPlanningYear);
+    } else {
+      setTimeout(() => {
+        const mockData = generateMockPlanningData(currentPlanningYear);
+        planningDataCache = mockData;
+        renderPlanning(mockData);
+        $('#planning-loading').addClass('hidden');
+        $('#planning-matrix-container').removeClass('hidden');
+      }, 500);
+    }
+  }
+
+  $('#planning-year-select').change(function() {
+    loadPlanning();
+  });
+  $('#btn-refresh-planning').click(function() {
+    loadPlanning();
+  });
+
+  function formatCell(valObj) {
+    if (!valObj || valObj.total === 0) return '-';
+    return valObj.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function renderPlanning(data) {
+    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    if (data.year === new Date().getFullYear()) {
+      $('#planning-current-month-badge').removeClass('hidden');
+      $('#planning-current-month-text').text(`${months[data.currentMonthNum - 1]}/${data.year}`);
+    } else {
+      $('#planning-current-month-badge').addClass('hidden');
+    }
+
+    const sum = data.summary;
+    $('#plan-summary-income').text(formatCurrency(sum.incomeRealized + sum.incomePlanned));
+    $('#plan-summary-income-realized').text(formatCurrency(sum.incomeRealized));
+    $('#plan-summary-income-planned').text(formatCurrency(sum.incomePlanned));
+    
+    $('#plan-summary-expense').text(formatCurrency(sum.expenseRealized + sum.expensePlanned));
+    $('#plan-summary-expense-realized').text(formatCurrency(sum.expenseRealized));
+    $('#plan-summary-expense-planned').text(formatCurrency(sum.expensePlanned));
+    
+    const currBalEl = $('#plan-summary-current-balance');
+    currBalEl.text(formatCurrency(sum.currentBalance));
+    currBalEl.removeClass('text-gray-900 dark:text-white text-rose-600 dark:text-rose-400');
+    if (sum.currentBalance < 0) currBalEl.addClass('text-rose-600 dark:text-rose-400');
+    else currBalEl.addClass('text-gray-900 dark:text-white');
+
+    const projBalEl = $('#plan-summary-projected-balance');
+    projBalEl.text(formatCurrency(sum.projectedBalance));
+    projBalEl.removeClass('text-gray-900 dark:text-white text-rose-600 dark:text-rose-400 text-purple-600 dark:text-purple-400');
+    if (sum.projectedBalance < 0) projBalEl.addClass('text-rose-600 dark:text-rose-400');
+    else if (sum.projectedBalance > 0) projBalEl.addClass('text-purple-600 dark:text-purple-400');
+    else projBalEl.addClass('text-gray-900 dark:text-white');
+
+    let theadHtml = `<tr><th class="px-4 py-3 sticky left-0 z-10 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 min-w-[200px]">Categoria</th>`;
+    data.monthsMeta.forEach(m => {
+      let style = '';
+      if (m.status === 'realized') style = 'text-gray-400 dark:text-gray-500 font-normal';
+      else if (m.status === 'current') style = 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 ring-2 ring-inset ring-primary font-bold rounded-t-md';
+      else style = 'text-purple-600 dark:text-purple-400 font-medium';
+      
+      theadHtml += `<th class="px-3 py-3 text-center min-w-[100px] ${style}">${m.name}</th>`;
+    });
+    theadHtml += `<th class="px-4 py-3 text-right bg-gray-50 dark:bg-gray-900 font-bold border-l border-gray-200 dark:border-gray-700">Total Ano</th></tr>`;
+    $('#planning-thead').html(theadHtml);
+
+    let tbodyHtml = '';
+
+    // RECEITAS
+    let recMasterHtml = `<tr class="planning-toggle-row cursor-pointer select-none transition-colors bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300" data-target="row-receitas">
+      <td class="px-4 py-3 sticky left-0 z-10 font-bold flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border-r border-gray-200 dark:border-gray-700">
+        <span>Receitas</span>
+        <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+      </td>`;
+    
+    let recTotals = Array(12).fill(0);
+    let recYearTotal = 0;
+    let recChildren = '';
+    
+    Object.keys(data.incomeCategories).sort().forEach(cat => {
+      let catYearTotal = 0;
+      let cellsHtml = '';
+      data.incomeCategories[cat].forEach((m, idx) => {
+        recTotals[idx] += m.total;
+        catYearTotal += m.total;
+        cellsHtml += `<td class="px-3 py-2 text-center planning-cell-action cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" data-cat="${cat}" data-month="${idx+1}" data-tipo="Entrada">${formatCell(m)}</td>`;
+      });
+      recYearTotal += catYearTotal;
+      recChildren += `<tr class="row-receitas hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
+        <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8">${cat}</td>
+        ${cellsHtml}
+        <td class="px-4 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 border-l border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30">${formatCurrency(catYearTotal)}</td>
+      </tr>`;
+    });
+
+    recTotals.forEach(t => {
+      recMasterHtml += `<td class="px-3 py-3 text-center font-bold">${t === 0 ? '-' : t.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>`;
+    });
+    recMasterHtml += `<td class="px-4 py-3 text-right font-bold border-l border-gray-200 dark:border-gray-700">${formatCurrency(recYearTotal)}</td></tr>`;
+    
+    tbodyHtml += recMasterHtml + recChildren;
+
+    // DESPESAS
+    const renderMacro = (macroName, rowClass, colorClasses, colorClassesTd, textClassTotal) => {
+      if (!data.expenseMacros[macroName] || Object.keys(data.expenseMacros[macroName]).length === 0) return;
+      
+      let masterHtml = `<tr class="planning-toggle-row cursor-pointer select-none transition-colors ${colorClasses}" data-target="${rowClass}">
+        <td class="px-4 py-3 sticky left-0 z-10 font-bold flex items-center justify-between ${colorClassesTd} border-r border-gray-200 dark:border-gray-700">
+          <span>${macroName}</span>
+          <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+        </td>`;
+      
+      let totals = Array(12).fill(0);
+      let yearTotal = 0;
+      let childrenHtml = '';
+
+      Object.keys(data.expenseMacros[macroName]).sort().forEach(cat => {
+        let catYearTotal = 0;
+        let cellsHtml = '';
+        data.expenseMacros[macroName][cat].forEach((m, idx) => {
+          totals[idx] += m.total;
+          catYearTotal += m.total;
+          cellsHtml += `<td class="px-3 py-2 text-center planning-cell-action cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" data-cat="${cat}" data-month="${idx+1}" data-tipo="Saída">${formatCell(m)}</td>`;
+        });
+        yearTotal += catYearTotal;
+        childrenHtml += `<tr class="${rowClass} hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
+          <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8">${cat}</td>
+          ${cellsHtml}
+          <td class="px-4 py-2 text-right font-semibold ${textClassTotal} border-l border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30">${formatCurrency(catYearTotal)}</td>
+        </tr>`;
+      });
+
+      totals.forEach(t => {
+        masterHtml += `<td class="px-3 py-3 text-center font-bold">${t === 0 ? '-' : t.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>`;
+      });
+      masterHtml += `<td class="px-4 py-3 text-right font-bold border-l border-gray-200 dark:border-gray-700">${formatCurrency(yearTotal)}</td></tr>`;
+      
+      tbodyHtml += masterHtml + childrenHtml;
+    };
+
+    renderMacro('Fixas', 'row-fixas', 'bg-rose-50 dark:bg-rose-900/20 text-rose-800 dark:text-rose-300', 'bg-rose-50 dark:bg-rose-900/20', 'text-rose-600 dark:text-rose-400');
+    renderMacro('Variáveis Essenciais', 'row-essenciais', 'bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-300', 'bg-orange-50 dark:bg-orange-900/20', 'text-orange-600 dark:text-orange-400');
+    renderMacro('Discricionárias', 'row-discricionarias', 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300', 'bg-amber-50 dark:bg-amber-900/20', 'text-amber-600 dark:text-amber-400');
+
+    $('#planning-tbody').html(tbodyHtml);
+
+    let tfootHtml = `<tr>
+      <td class="px-4 py-3 sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border-r border-gray-300 dark:border-gray-600">Saldo do Mês</td>`;
+    let totalBalanceYear = 0;
+    data.monthlyTotals.forEach(m => {
+      totalBalanceYear += m.balance;
+      let colorClass = m.balance < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white';
+      tfootHtml += `<td class="px-3 py-3 text-center ${colorClass}">${m.balance === 0 ? '-' : m.balance.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>`;
+    });
+    let totalColorClass = totalBalanceYear < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white';
+    tfootHtml += `<td class="px-4 py-3 text-right ${totalColorClass} border-l border-gray-300 dark:border-gray-600">${formatCurrency(totalBalanceYear)}</td></tr>`;
+    
+    $('#planning-tfoot').html(tfootHtml);
+  }
+
+  $(document).on('click', '.planning-toggle-row', function() {
+    const targetClass = $(this).data('target');
+    const icon = $(this).find('i.fa-chevron-down');
+    
+    $(`.${targetClass}`).toggleClass('hidden');
+    
+    if ($(`.${targetClass}`).first().hasClass('hidden')) {
+      icon.css('transform', 'rotate(0deg)');
+    } else {
+      icon.css('transform', 'rotate(-180deg)');
+    }
+  });
+
+  $(document).on('click', '.planning-cell-action', function() {
+    const cat = $(this).data('cat');
+    const month = parseInt($(this).data('month'));
+    const tipo = $(this).data('tipo');
+    const year = currentPlanningYear;
+
+    $('#planning-drawer-title').text(cat);
+    $('#planning-drawer-subtitle').text(`Mês ${month}/${year}`);
+    
+    $('#planning-drawer-tx-list').empty();
+    $('#planning-drawer-empty').addClass('hidden');
+    $('#planning-drawer-loading').removeClass('hidden');
+
+    $('#modal-planning-drawer').removeClass('hidden');
+    
+    setTimeout(() => {
+      $('#planning-drawer-backdrop').removeClass('opacity-0');
+      $('#planning-drawer-panel').removeClass('translate-x-full');
+    }, 10);
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          $('#planning-drawer-loading').addClass('hidden');
+          renderDrawerTransactions(rows, cat, month, year, tipo);
+        })
+        .withFailureHandler(function(err) {
+          console.error(err);
+          $('#planning-drawer-loading').addClass('hidden');
+          $('#planning-drawer-empty').removeClass('hidden');
+        })
+        .getTransactions(year.toString(), month.toString());
+    } else {
+      setTimeout(() => {
+        $('#planning-drawer-loading').addClass('hidden');
+        renderDrawerTransactions([], cat, month, year, tipo);
+      }, 500);
+    }
+  });
+
+  function renderDrawerTransactions(rows, cat, month, year, tipo) {
+    const list = $('#planning-drawer-tx-list');
+    list.empty();
+    
+    let filtered = rows.filter(r => r.categoria === cat && r.tipo === tipo);
+
+    filtered = filtered.filter(r => {
+      const d = new Date(r.data);
+      return d.getFullYear() === year && (d.getMonth() + 1) === month;
+    });
+
+    if (filtered.length === 0) {
+      $('#planning-drawer-empty').removeClass('hidden');
+    } else {
+      $('#planning-drawer-empty').addClass('hidden');
+      filtered.forEach(t => {
+        const d = new Date(t.data);
+        const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}`;
+        const color = t.tipo === 'Entrada' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+        list.append(`
+          <li class="py-3 flex justify-between items-center group">
+            <div>
+              <p class="text-sm font-medium text-gray-900 dark:text-white">${t.descricao}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">${dateStr} &bull; ${t.origem || 'Manual'}</p>
+            </div>
+            <div class="text-sm font-bold ${color}">
+              ${formatCurrency(t.valor)}
+            </div>
+          </li>
+        `);
+      });
+    }
+  }
+
+  $('#btn-close-planning-drawer, #planning-drawer-backdrop').click(function() {
+    $('#planning-drawer-backdrop').addClass('opacity-0');
+    $('#planning-drawer-panel').addClass('translate-x-full');
+    setTimeout(() => {
+      $('#modal-planning-drawer').addClass('hidden');
+    }, 300);
+  });
+
+  function generateMockPlanningData(year) {
+    return {
+      year: year,
+      currentMonthNum: new Date().getMonth() + 1,
+      monthsMeta: Array.from({length:12}, (_, i) => ({month: i+1, status: i < new Date().getMonth() ? 'realized' : i === new Date().getMonth() ? 'current' : 'planned', name: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][i]})),
+      incomeCategories: {
+        'Salário': Array.from({length:12}, () => ({realized:5000, planned:0, total:5000}))
+      },
+      expenseMacros: { 
+        'Fixas': { 'Moradia': Array.from({length:12}, () => ({realized:1500, planned:0, total:1500})) }, 
+        'Variáveis Essenciais': { 'Supermercado': Array.from({length:12}, () => ({realized:800, planned:0, total:800})) }, 
+        'Discricionárias': { 'Lazer': Array.from({length:12}, () => ({realized:400, planned:0, total:400})) } 
+      },
+      monthlyTotals: Array.from({length:12}, () => ({income:5000, expense:2700, balance:2300})),
+      summary: { incomeRealized:0, incomePlanned:60000, expenseRealized:0, expensePlanned:32400, currentBalance:2300, projectedBalance:27600 }
+    };
+  }
+
+  // ==========================================
 
 </script>

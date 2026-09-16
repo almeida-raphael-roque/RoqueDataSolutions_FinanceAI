@@ -45,8 +45,9 @@
         <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6 md:p-8" id="main-content">
           <?!= include('Dashboard'); ?>
           <?!= include('Planning_page'); ?>
-          <?!= include('Transactions_page'); ?>
+                    <?!= include('Transactions_page'); ?>
           <?!= include('Categories_page'); ?>
+          <?!= include('ControleGastos_page'); ?>
         </main>
       </div>
     </div>
@@ -128,7 +129,6 @@
             <label class="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
             <div class="flex space-x-2">
               <input type="text" id="t-descricao" required class="flex-1 px-3.5 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm" placeholder="Ex: Aluguel Residencial, Salário Mensal, Internet">
-              <button type="button" id="btn-ai-clean" class="bg-gray-100 text-primary hover:bg-gray-200 px-3.5 rounded-lg transition-colors" title="Limpar e sugerir com IA">
                 <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
               </button>
             </div>

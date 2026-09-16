@@ -1,10 +1,9 @@
-/**
- * Funções de Transações e Dashboard
- */
 function saveTransaction(origem, descricao, categoria, tipo, valor, data) {
   backupForUndo();
   const sheet = getTable('Transactions');
   sheet.appendRow([origem, descricao, categoria, tipo, valor, data]);
+  SpreadsheetApp.flush();
+  
   return true;
 }
 
@@ -17,63 +16,11 @@ function saveBatchTransactions(items) {
   });
   const lastRow = sheet.getLastRow();
   sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
+  SpreadsheetApp.flush();
+  
   return true;
 }
 
-/**
- * Exclui transações com base no ano, intervalo de meses e categoria / macrocategoria
- */
-function deleteTransactionsRange(year, startMonth, endMonth, category, tipo) {
-  backupForUndo();
-  const sheet = getTable('Transactions');
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return true;
-
-  const header = data[0];
-  const toKeep = [header];
-  const yTarget = parseInt(year, 10);
-  const mStart = Math.min(parseInt(startMonth, 10), parseInt(endMonth, 10));
-  const mEnd = Math.max(parseInt(startMonth, 10), parseInt(endMonth, 10));
-
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    const d = parseFlexDate(row[5]);
-    if (!isNaN(d.getTime())) {
-      const rowYear = d.getFullYear();
-      const rowMonth = d.getMonth() + 1;
-      if (rowYear === yTarget && rowMonth >= mStart && rowMonth <= mEnd) {
-        let match = false;
-        const rowCat = String(row[2] || '').trim();
-        const rowTipo = String(row[3] || '').trim();
-        const rowDesc = String(row[1] || '').trim();
-
-        if (category === '__ALL_INCOME__') {
-          match = (rowTipo === 'Entrada');
-        } else if (category === '__ALL_EXPENSE__') {
-          match = (rowTipo === 'Saída');
-        } else if (category.startsWith('__MACRO_')) {
-          const macroKey = category.replace('__MACRO_', '');
-          const rowMacro = getMacroCategory(rowCat, rowDesc);
-          match = (rowMacro === macroKey && (!tipo || rowTipo === tipo));
-        } else {
-          match = (rowCat === category && (!tipo || rowTipo === tipo));
-        }
-
-        if (match) {
-          // Excluir (não adiciona ao toKeep)
-          continue;
-        }
-      }
-    }
-    toKeep.push(row);
-  }
-
-  sheet.clear();
-  if (toKeep.length > 0) {
-    sheet.getRange(1, 1, toKeep.length, toKeep[0].length).setValues(toKeep);
-  }
-  return true;
-}
 
 function clearTransactions(yearStr, monthStr) {
   backupForUndo();
@@ -95,6 +42,7 @@ function clearTransactions(yearStr, monthStr) {
   if (toKeep.length > 0) {
     sheet.getRange(1, 1, toKeep.length, toKeep[0].length).setValues(toKeep);
   }
+  
   return true;
 }
 
@@ -133,6 +81,7 @@ function undoLastAction() {
   if (currentData.length > 0) {
     backup.getRange(1, 1, currentData.length, currentData[0].length).setValues(currentData);
   }
+  
   return true;
 }
 
@@ -190,6 +139,12 @@ function getTransactions(year = 'all', month = 'all') {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return []; 
   
+  const catNameMap = {};
+  try {
+    const cats = getGlobalCategories();
+    cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
+  } catch(e) {}
+  
   const rows = [];
   for (let i = data.length - 1; i >= 1; i--) { 
     const row = data[i];
@@ -199,11 +154,19 @@ function getTransactions(year = 'all', month = 'all') {
       if (dateStr instanceof Date) {
         dateStr = Utilities.formatDate(dateStr, Session.getScriptTimeZone(), "yyyy-MM-dd");
       }
+      let tipo = String(row[3] || '').trim();
+      const tipoL = tipo.toLowerCase();
+      if (tipoL === 'saída' || tipoL === 'saida' || tipoL === 'despesa') tipo = 'Saída';
+      else if (tipoL === 'entrada' || tipoL === 'receita') tipo = 'Entrada';
+      let categoria = String(row[2] || '').trim() || 'Outros';
+      if (catNameMap[categoria.toLowerCase()]) {
+        categoria = catNameMap[categoria.toLowerCase()];
+      }
       rows.push({
-        origem: row[0],
-        descricao: row[1],
-        categoria: row[2],
-        tipo: row[3],
+        origem: String(row[0] || '').trim(),
+        descricao: String(row[1] || '').trim(),
+        categoria: categoria,
+        tipo: tipo,
         valor: parseValor(row[4]),
         data: dateStr
       });
@@ -213,19 +176,28 @@ function getTransactions(year = 'all', month = 'all') {
 }
 
 function getMacroCategory(categoria, descricao) {
-  const cat = (categoria || '').toLowerCase();
-  const desc = (descricao || '').toLowerCase();
+  const catLower = String(categoria || '').toLowerCase().trim();
+  const descLower = String(descricao || '').toLowerCase().trim();
   
-  if (cat.includes('moradia') || desc.includes('aluguel') || desc.includes('internet') || desc.includes('condomínio') || cat.includes('educação') || cat.includes('telefone') || cat.includes('celular') || desc.includes('vivo') || desc.includes('claro') || desc.includes('tim')) return 'Fixas';
+  // 1. Check Global Categories (Single Source of Truth)
+  try {
+    const cats = getGlobalCategories();
+    const existing = cats.find(c => String(c.name).toLowerCase().trim() === catLower);
+    if (existing && existing.profile) {
+      if (existing.profile.includes('Fixa')) return 'Fixas';
+      if (existing.profile.includes('Variável')) return 'Variáveis Essenciais';
+      return 'Discricionárias';
+    }
+  } catch(e) {}
   
-  if (desc.includes('energia') || desc.includes('água') || desc.includes('gás') || desc.includes('luz') || cat.includes('saúde') || desc.includes('mercado') || desc.includes('supermercado') || desc.includes('farmácia') || cat.includes('transporte')) return 'Variáveis Essenciais';
-  
-  if (cat.includes('lazer') || desc.includes('restaurante') || desc.includes('delivery') || desc.includes('compras') || desc.includes('passeio') || desc.includes('cinema') || desc.includes('netflix') || desc.includes('uber') || cat.includes('alimentação')) {
-    if (desc.includes('mercado') || desc.includes('supermercado')) return 'Variáveis Essenciais';
+  // 2. Fallback heuristics for unmapped categories
+  if (catLower.includes('moradia') || descLower.includes('aluguel') || descLower.includes('internet') || descLower.includes('condomínio') || catLower.includes('educação') || catLower.includes('telefone') || catLower.includes('celular') || descLower.includes('vivo') || descLower.includes('claro') || descLower.includes('tim')) return 'Fixas';
+  if (descLower.includes('energia') || descLower.includes('água') || descLower.includes('gás') || descLower.includes('luz') || catLower.includes('saúde') || descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('farmácia') || catLower.includes('transporte') || catLower.includes('alimentação')) return 'Variáveis Essenciais';
+  if (catLower.includes('lazer') || descLower.includes('restaurante') || descLower.includes('delivery') || descLower.includes('compras') || descLower.includes('passeio') || descLower.includes('cinema') || descLower.includes('netflix') || descLower.includes('uber')) {
+    if (descLower.includes('mercado') || descLower.includes('supermercado')) return 'Variáveis Essenciais';
     return 'Discricionárias';
   }
-  
-  return 'Fixas'; // Default behavior to align with client-side mapping for new unmapped categories
+  return 'Discricionárias';
 }
 
 const MACRO_COLORS = {
@@ -237,6 +209,12 @@ const MACRO_COLORS = {
 function getDashboardData(year = 'all', month = 'all') {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
+  
+  const catNameMap = {};
+  try {
+    const cats = getGlobalCategories();
+    cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
+  } catch(e) {}
   
   let income = 0;
   let expense = 0;
@@ -253,10 +231,16 @@ function getDashboardData(year = 'all', month = 'all') {
   
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const origem = row[0];
-    const desc = row[1] || 'Desconhecido';
-    const categoria = row[2] || 'Outros';
-    const tipo = row[3];
+    const origem = String(row[0] || '').trim();
+    const desc = String(row[1] || 'Desconhecido').trim();
+    let categoria = String(row[2] || 'Outros').trim();
+    if (catNameMap[categoria.toLowerCase()]) {
+      categoria = catNameMap[categoria.toLowerCase()];
+    }
+    let tipo = String(row[3] || '').trim();
+    const tipoLower = tipo.toLowerCase();
+    if (tipoLower === 'saída' || tipoLower === 'saida' || tipoLower === 'despesa') tipo = 'Saída';
+    else if (tipoLower === 'entrada' || tipoLower === 'receita') tipo = 'Entrada';
     const valor = parseValor(row[4]);
     const dataVal = row[5];
     
@@ -352,6 +336,123 @@ function getDashboardData(year = 'all', month = 'all') {
   };
 }
 
+
+function getMonthShortName(m) {
+  const names = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return names[m-1];
+}
+
+function getPlanningData(year) {
+  const sheet = getTable('Transactions');
+  const data = sheet.getDataRange().getValues();
+  
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const currentYear = now.getFullYear();
+  const currentMonthNum = now.getMonth() + 1;
+  const targetYear = parseInt(year, 10);
+  
+  const monthsMeta = [];
+  for (let i = 1; i <= 12; i++) {
+    let status = 'planned';
+    if (targetYear < currentYear || (targetYear === currentYear && i < currentMonthNum)) {
+      status = 'realized';
+    } else if (targetYear === currentYear && i === currentMonthNum) {
+      status = 'current';
+    }
+    monthsMeta.push({ month: i, status: status, name: getMonthShortName(i) });
+  }
+
+  const incomeCategories = {};
+  const expenseMacros = {
+    'Fixas': {},
+    'Variáveis Essenciais': {},
+    'Discricionárias': {}
+  };
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const d = parseFlexDate(row[5]);
+    if (isNaN(d.getTime())) continue;
+    if (d.getFullYear() !== targetYear) continue;
+
+    const mIdx = d.getMonth();
+    const valor = parseValor(row[4]);
+    let categoria = String(row[2] || 'Outros').trim();
+    let tipo = String(row[3] || '').trim();
+    if (tipo.toLowerCase() === 'saída' || tipo.toLowerCase() === 'despesa') tipo = 'Saída';
+    else tipo = 'Entrada';
+    
+    const desc = String(row[1] || '').trim();
+    
+    let txStatus = 'planned';
+    if (d.getTime() <= today.getTime()) {
+        txStatus = 'realized';
+    }
+
+    if (tipo === 'Entrada') {
+      if (!incomeCategories[categoria]) {
+        incomeCategories[categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+      }
+      incomeCategories[categoria][mIdx][txStatus] += valor;
+      incomeCategories[categoria][mIdx].total += valor;
+    } else {
+      let macro = getMacroCategory(categoria, desc);
+      if (!expenseMacros[macro]) macro = 'Discricionárias';
+      if (!expenseMacros[macro][categoria]) {
+        expenseMacros[macro][categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+      }
+      expenseMacros[macro][categoria][mIdx][txStatus] += valor;
+      expenseMacros[macro][categoria][mIdx].total += valor;
+    }
+  }
+
+  const monthlyTotals = Array.from({length: 12}, () => ({ income: 0, expense: 0, balance: 0 }));
+  let summary = {
+    incomeRealized: 0,
+    incomePlanned: 0,
+    expenseRealized: 0,
+    expensePlanned: 0,
+    currentBalance: 0,
+    projectedBalance: 0
+  };
+
+  Object.values(incomeCategories).forEach(catMonths => {
+    catMonths.forEach((m, idx) => {
+      monthlyTotals[idx].income += m.total;
+      summary.incomeRealized += m.realized;
+      summary.incomePlanned += m.planned;
+    });
+  });
+
+  Object.values(expenseMacros).forEach(macroGroup => {
+    Object.values(macroGroup).forEach(catMonths => {
+      catMonths.forEach((m, idx) => {
+        monthlyTotals[idx].expense += m.total;
+        summary.expenseRealized += m.realized;
+        summary.expensePlanned += m.planned;
+      });
+    });
+  });
+
+  monthlyTotals.forEach((m, idx) => {
+    m.balance = m.income - m.expense;
+  });
+
+  summary.currentBalance = summary.incomeRealized - summary.expenseRealized;
+  summary.projectedBalance = (summary.incomeRealized + summary.incomePlanned) - (summary.expenseRealized + summary.expensePlanned);
+
+  return {
+    year: targetYear,
+    currentMonthNum: currentMonthNum,
+    monthsMeta: monthsMeta,
+    incomeCategories: incomeCategories,
+    expenseMacros: expenseMacros,
+    monthlyTotals: monthlyTotals,
+    summary: summary
+  };
+}
+
 function getTransactionsForCategorization() {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
@@ -430,6 +531,7 @@ function saveCategorizedTransactionsBatch(updates, rulesToSave, deletedRowIndice
     saveUserRulesBatch(rulesToSave);
   }
   
+  
   return true;
 }
 
@@ -485,283 +587,3 @@ function exportToCsv() {
   };
 }
 
-/**
- * Retorna os dados agregados para o Planejamento Financeiro Anual
- * Progressão: REALIZADO -> MÊS ATUAL -> PREVISTO
- */
-function getPlanningData(targetYear) {
-  const now = new Date();
-  const currentSystemYear = now.getFullYear();
-  const currentSystemMonth = now.getMonth() + 1; // 1-12
-  const currentSystemDay = now.getDate();
-
-  const sheet = getTable('Transactions');
-  const data = sheet.getDataRange().getValues();
-
-  const yearsSet = new Set();
-  yearsSet.add(currentSystemYear);
-
-  const parsedYear = targetYear ? parseInt(targetYear, 10) : currentSystemYear;
-
-  const validRows = [];
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    const dataVal = row[5];
-    const d = parseFlexDate(dataVal);
-    if (!isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      yearsSet.add(y);
-      if (y === parsedYear) {
-        let dateStr = dataVal;
-        if (dateStr instanceof Date) {
-          dateStr = Utilities.formatDate(dateStr, Session.getScriptTimeZone(), "yyyy-MM-dd");
-        }
-        validRows.push({
-          origem: row[0] || '',
-          descricao: String(row[1] || '').trim(),
-          categoria: String(row[2] || '').trim() || 'Outros',
-          tipo: String(row[3] || '').trim(),
-          valor: parseValor(row[4]),
-          data: dateStr,
-          d: d,
-          month: d.getMonth() + 1,
-          day: d.getDate()
-        });
-      }
-    }
-  }
-
-  const availableYears = Array.from(yearsSet).sort((a, b) => b - a);
-
-  const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const monthShort = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-
-  // Status de cada mês no ano selecionado
-  const monthsMeta = [];
-  for (let m = 1; m <= 12; m++) {
-    let status = 'realized';
-    if (parsedYear < currentSystemYear) {
-      status = 'realized';
-    } else if (parsedYear > currentSystemYear) {
-      status = 'planned';
-    } else {
-      if (m < currentSystemMonth) status = 'realized';
-      else if (m === currentSystemMonth) status = 'current';
-      else status = 'planned';
-    }
-    monthsMeta.push({
-      month: m,
-      name: monthNames[m - 1],
-      shortName: monthShort[m - 1],
-      status: status
-    });
-  }
-
-  // Inicializa estruturas de dados por mês
-  const incomeCategoryMap = {}; // categoria -> { months: [1..12: {realized, planned, total}], totalYear, totalRealized, totalPlanned }
-  const expenseMacroMap = {
-    'Fixas': { label: 'Despesas Fixas', months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0})), totalYear: 0, subcategories: {} },
-    'Variáveis Essenciais': { label: 'Variáveis Essenciais', months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0})), totalYear: 0, subcategories: {} },
-    'Discricionárias': { label: 'Despesas Discricionárias', months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0})), totalYear: 0, subcategories: {} }
-  };
-
-  const monthlyTotals = Array.from({length: 12}, () => ({
-    incomeRealized: 0,
-    incomePlanned: 0,
-    incomeTotal: 0,
-    expenseRealized: 0,
-    expensePlanned: 0,
-    expenseTotal: 0,
-    monthlyBalance: 0,
-    accumulatedBalance: 0,
-    status: 'realized'
-  }));
-
-  // Associa status a cada mês
-  monthsMeta.forEach((mm, idx) => {
-    monthlyTotals[idx].status = mm.status;
-  });
-
-  // Processa as transações do ano
-  validRows.forEach(tx => {
-    const mIdx = tx.month - 1;
-    if (mIdx < 0 || mIdx > 11) return;
-
-    const mStatus = monthsMeta[mIdx].status;
-    let isTxRealized = true;
-
-    if (mStatus === 'realized') {
-      isTxRealized = true;
-    } else if (mStatus === 'planned') {
-      isTxRealized = false;
-    } else {
-      // Mês atual: antes ou até hoje é realizado, após hoje é previsto
-      if (tx.day <= currentSystemDay) {
-        isTxRealized = true;
-      } else {
-        isTxRealized = false;
-      }
-    }
-
-    const txObj = {
-      origem: tx.origem,
-      descricao: tx.descricao,
-      categoria: tx.categoria,
-      tipo: tx.tipo,
-      valor: tx.valor,
-      data: tx.data,
-      isRealized: isTxRealized,
-      statusLabel: isTxRealized ? 'Realizado' : 'Previsto'
-    };
-
-    if (tx.tipo === 'Entrada') {
-      const cat = tx.categoria;
-      if (!incomeCategoryMap[cat]) {
-        incomeCategoryMap[cat] = {
-          label: cat,
-          months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0, txs: []})),
-          totalYear: 0,
-          totalRealized: 0,
-          totalPlanned: 0
-        };
-      }
-
-      if (isTxRealized) {
-        incomeCategoryMap[cat].months[mIdx].realized += tx.valor;
-        incomeCategoryMap[cat].totalRealized += tx.valor;
-        monthlyTotals[mIdx].incomeRealized += tx.valor;
-      } else {
-        incomeCategoryMap[cat].months[mIdx].planned += tx.valor;
-        incomeCategoryMap[cat].totalPlanned += tx.valor;
-        monthlyTotals[mIdx].incomePlanned += tx.valor;
-      }
-
-      incomeCategoryMap[cat].months[mIdx].total += tx.valor;
-      incomeCategoryMap[cat].months[mIdx].txs.push(txObj);
-      incomeCategoryMap[cat].totalYear += tx.valor;
-      monthlyTotals[mIdx].incomeTotal += tx.valor;
-
-    } else if (tx.tipo === 'Saída') {
-      let macro = getMacroCategory(tx.categoria, tx.descricao);
-      if (!expenseMacroMap[macro]) {
-        macro = 'Discricionárias';
-      }
-
-      const macroObj = expenseMacroMap[macro];
-      if (isTxRealized) {
-        macroObj.months[mIdx].realized += tx.valor;
-        monthlyTotals[mIdx].expenseRealized += tx.valor;
-      } else {
-        macroObj.months[mIdx].planned += tx.valor;
-        monthlyTotals[mIdx].expensePlanned += tx.valor;
-      }
-      macroObj.months[mIdx].total += tx.valor;
-      macroObj.totalYear += tx.valor;
-      monthlyTotals[mIdx].expenseTotal += tx.valor;
-
-      const cat = tx.categoria;
-      if (!macroObj.subcategories[cat]) {
-        macroObj.subcategories[cat] = {
-          label: cat,
-          macro: macro,
-          months: Array.from({length: 12}, () => ({realized: 0, planned: 0, total: 0, txs: []})),
-          totalYear: 0,
-          totalRealized: 0,
-          totalPlanned: 0
-        };
-      }
-
-      const subCat = macroObj.subcategories[cat];
-      if (isTxRealized) {
-        subCat.months[mIdx].realized += tx.valor;
-        subCat.totalRealized += tx.valor;
-      } else {
-        subCat.months[mIdx].planned += tx.valor;
-        subCat.totalPlanned += tx.valor;
-      }
-      subCat.months[mIdx].total += tx.valor;
-      subCat.months[mIdx].txs.push(txObj);
-      subCat.totalYear += tx.valor;
-    }
-  });
-
-  // Calcula Saldos Mensais e Saldo Acumulado
-  let runningAccumulated = 0;
-  let currentAccumulatedBalance = 0;
-  let totalYearIncome = 0;
-  let totalYearIncomeRealized = 0;
-  let totalYearIncomePlanned = 0;
-  let totalYearExpense = 0;
-  let totalYearExpenseRealized = 0;
-  let totalYearExpensePlanned = 0;
-
-  for (let m = 0; m < 12; m++) {
-    const item = monthlyTotals[m];
-    totalYearIncome += item.incomeTotal;
-    totalYearIncomeRealized += item.incomeRealized;
-    totalYearIncomePlanned += item.incomePlanned;
-
-    totalYearExpense += item.expenseTotal;
-    totalYearExpenseRealized += item.expenseRealized;
-    totalYearExpensePlanned += item.expensePlanned;
-
-    // Fórmula do saldo conforme especificação:
-    // Meses realizados: Realizado - Realizado
-    // Mês atual: Total (Realizado + Previsto) Receitas - Total Despesas
-    // Meses futuros: Previsto Receitas - Previsto Despesas (ou Total se lançado como previsto)
-    if (item.status === 'realized') {
-      item.monthlyBalance = item.incomeRealized - item.expenseRealized;
-    } else if (item.status === 'current') {
-      item.monthlyBalance = item.incomeTotal - item.expenseTotal;
-    } else {
-      item.monthlyBalance = (item.incomePlanned || item.incomeTotal) - (item.expensePlanned || item.expenseTotal);
-    }
-
-    runningAccumulated += item.monthlyBalance;
-    item.accumulatedBalance = runningAccumulated;
-
-    // Posição realizada até a data presente
-    if (item.status === 'realized' || (item.status === 'current' && parsedYear === currentSystemYear)) {
-      currentAccumulatedBalance = runningAccumulated;
-    }
-  }
-
-  const projectedYearEndBalance = runningAccumulated;
-
-  // Transforma mapas em arrays ordenados para visualização
-  const incomeCategoriesList = Object.values(incomeCategoryMap).sort((a, b) => b.totalYear - a.totalYear);
-
-  const expenseMacrosList = Object.keys(expenseMacroMap).map(macroKey => {
-    const mData = expenseMacroMap[macroKey];
-    const subcats = Object.values(mData.subcategories).sort((a, b) => b.totalYear - a.totalYear);
-    return {
-      key: macroKey,
-      label: mData.label,
-      months: mData.months,
-      totalYear: mData.totalYear,
-      subcategories: subcats
-    };
-  });
-
-  return {
-    year: parsedYear,
-    currentSystemYear: currentSystemYear,
-    currentSystemMonth: currentSystemMonth,
-    currentSystemDay: currentSystemDay,
-    availableYears: availableYears,
-    monthsMeta: monthsMeta,
-    monthlyTotals: monthlyTotals,
-    incomeCategories: incomeCategoriesList,
-    expenseMacros: expenseMacrosList,
-    summary: {
-      totalYearIncome: totalYearIncome,
-      totalYearIncomeRealized: totalYearIncomeRealized,
-      totalYearIncomePlanned: totalYearIncomePlanned,
-      totalYearExpense: totalYearExpense,
-      totalYearExpenseRealized: totalYearExpenseRealized,
-      totalYearExpensePlanned: totalYearExpensePlanned,
-      currentAccumulatedBalance: currentAccumulatedBalance,
-      projectedYearEndBalance: projectedYearEndBalance
-    }
-  };
-}

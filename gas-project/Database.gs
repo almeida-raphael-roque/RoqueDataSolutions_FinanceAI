@@ -1,12 +1,5 @@
-/**
- * Conexão com Google Sheets e abstração de banco de dados
- * Suporta vinculação de planilha personalizada por usuário
- */
 const DEFAULT_SPREADSHEET_ID = "17Dk0WTAsgPprAmx6jIWXbRsKNrtTvu9LEfCWpG2MuC4";
 
-/**
- * Extrai o ID da planilha a partir de uma URL completa ou do próprio ID
- */
 function extractSpreadsheetId(input) {
   if (!input) return null;
   const str = String(input).trim();
@@ -26,9 +19,6 @@ function extractSpreadsheetId(input) {
   return null;
 }
 
-/**
- * Obtém o ID da planilha ativa para o usuário atual
- */
 function getUserSpreadsheetId() {
   try {
     const userProp = PropertiesService.getUserProperties().getProperty('USER_SPREADSHEET_ID');
@@ -41,9 +31,6 @@ function getUserSpreadsheetId() {
   return DEFAULT_SPREADSHEET_ID;
 }
 
-/**
- * Retorna o objeto Spreadsheet aberto
- */
 function getSpreadsheet() {
   const sheetId = getUserSpreadsheetId();
   try {
@@ -57,9 +44,6 @@ function getSpreadsheet() {
   }
 }
 
-/**
- * Retorna informações sobre a planilha atualmente vinculada
- */
 function getLinkedSpreadsheetInfo() {
   const currentId = getUserSpreadsheetId();
   let title = "Planilha Principal";
@@ -84,9 +68,6 @@ function getLinkedSpreadsheetInfo() {
   };
 }
 
-/**
- * Vincula uma nova planilha informada pelo usuário (URL ou ID)
- */
 function linkUserSpreadsheet(urlOrId) {
   const newId = extractSpreadsheetId(urlOrId);
   if (!newId) {
@@ -143,9 +124,6 @@ function linkUserSpreadsheet(urlOrId) {
   }
 }
 
-/**
- * Desvincula a planilha customizada e restaura a planilha padrão
- */
 function unlinkUserSpreadsheet() {
   try {
     PropertiesService.getUserProperties().deleteProperty('USER_SPREADSHEET_ID');
@@ -194,30 +172,3 @@ function createTable(tableName) {
   return sheet;
 }
 
-/**
- * Remove abas não utilizadas da planilha (users, categories, goals),
- * preservando com segurança 'Transactions' e 'UserRules'.
- */
-function deleteUnusedSheets() {
-  const ss = getSpreadsheet();
-  const sheetNamesToRemove = [
-    'users', 'Users', 'USERS',
-    'categories', 'Categories', 'CATEGORIES',
-    'goals', 'Goals', 'GOALS'
-  ];
-  
-  const removed = [];
-  sheetNamesToRemove.forEach(name => {
-    const sheet = ss.getSheetByName(name);
-    if (sheet && ss.getSheets().length > 1) {
-      ss.deleteSheet(sheet);
-      removed.push(name);
-    }
-  });
-  
-  return {
-    success: true,
-    removedSheets: removed,
-    activeSheets: ss.getSheets().map(s => s.getName())
-  };
-}
