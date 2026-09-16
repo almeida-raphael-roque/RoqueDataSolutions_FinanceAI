@@ -1,0 +1,30 @@
+name: Deploy para o Google Apps Script (Clasp)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar o Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar o Clasp
+        run: npm install -g @google/clasp
+
+      - name: Configurar Autenticação do Clasp
+        run: |
+          echo "${{ secrets.CLASP_TOKEN }}" > ~/.clasprc.json
+          
+      - name: Enviar o código para o Google Apps Script
+        working-directory: ./gas-project
+        run: clasp push --force
