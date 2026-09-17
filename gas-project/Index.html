@@ -7,7 +7,90 @@
     <?!= include('Styles'); ?>
   </head>
   <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
-    <div class="flex h-screen w-full">
+    
+    <!-- AUTHENTICATION PAGE -->
+    <div id="login-container" class="grid grid-cols-1 lg:grid-cols-[1fr_450px] min-h-screen bg-[#0b0f19] text-white font-sans w-full z-[100] fixed inset-0 p-4 lg:p-10 gap-4 lg:gap-10">
+      
+      <!-- Left side (Hero) -->
+      <div class="hidden lg:flex flex-col justify-between bg-gradient-to-br from-[#111827] to-[#0f172a] border border-gray-800 rounded-[40px] p-12 relative overflow-hidden">
+        <!-- Background grid effect -->
+        <div class="absolute inset-0 opacity-10" style="background-image: linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px); background-size: 40px 40px;"></div>
+        
+        <!-- Top Section -->
+        <div class="relative z-10">
+          <div class="flex items-center gap-3 mb-16">
+            <div class="w-12 h-12 bg-[#06b6d4] rounded-xl flex items-center justify-center shadow-lg shadow-[#06b6d4]/20">
+              <i class="fa-solid fa-coins text-white text-xl"></i>
+            </div>
+            <div>
+              <h1 class="font-bold text-2xl tracking-tight text-white leading-none mb-1">FINANCE<span class="text-[#06b6d4]">.BASIC</span></h1>
+              <p class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Gestão Financeira</p>
+            </div>
+          </div>
+
+          <h1 class="text-6xl xl:text-7xl font-bold leading-[0.9] tracking-tight mb-6">
+            Controle suas<br>finanças e<br>alcance os seus<br><span class="text-[#06b6d4]">objetivos.</span>
+          </h1>
+          <p class="text-gray-400 max-w-sm text-sm">
+            Gestão inteligente de despesas, receitas e orçamentos em um painel seguro.
+          </p>
+        </div>
+
+        <!-- Bottom Section -->
+        <div class="relative z-10">
+          <div class="flex flex-wrap gap-3">
+            <div class="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-800 bg-gray-900/60 text-xs text-gray-300 font-medium">
+              <i class="fa-solid fa-chart-pie text-[#06b6d4]"></i> Visão Geral
+            </div>
+            <div class="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-800 bg-gray-900/60 text-xs text-gray-300 font-medium">
+              <i class="fa-solid fa-calendar-days text-[#06b6d4]"></i> Planejamento Anual
+            </div>
+            <div class="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-800 bg-gray-900/60 text-xs text-gray-300 font-medium">
+              <i class="fa-solid fa-list-check text-[#06b6d4]"></i> Controle de Gastos
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right side (Form) -->
+      <div class="flex items-center justify-center p-6 lg:p-0">
+        <div class="w-full max-w-[320px]">
+          <h3 class="text-3xl font-bold tracking-tight mb-10 text-white">Entrar.</h3>
+          
+          <form id="login-form" class="flex flex-col gap-8">
+            <div>
+              <div class="text-[10px] uppercase tracking-[0.15em] opacity-60 font-bold mb-2 text-gray-400">Endereço de E-mail</div>
+              <div class="relative">
+                <input type="text" id="login-email" placeholder="voce@empresa.com" class="w-full bg-[#111827] border border-gray-800 rounded-lg py-3 px-4 text-lg focus:outline-none focus:border-[#06b6d4] focus:ring-1 focus:ring-[#06b6d4] transition-colors text-white placeholder-gray-600">
+              </div>
+            </div>
+            
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <div class="text-[10px] uppercase tracking-[0.15em] opacity-60 font-bold text-gray-400">Senha</div>
+                <button type="button" id="toggle-password" class="text-gray-500 hover:text-gray-300 transition-colors">
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+              </div>
+              <div class="relative">
+                <input type="password" id="login-password" placeholder="••••••••" class="w-full bg-[#111827] border border-gray-800 rounded-lg py-3 px-4 text-lg focus:outline-none focus:border-[#06b6d4] focus:ring-1 focus:ring-[#06b6d4] transition-colors text-white placeholder-gray-600">
+              </div>
+            </div>
+
+            <div id="login-error" class="hidden text-rose-400 text-xs text-center -mt-4 bg-rose-500/10 py-2 rounded">
+              E-mail ou senha incorretos.
+            </div>
+
+            <button type="submit" class="w-full bg-[#06b6d4] hover:bg-[#0891b2] text-white py-4 rounded-lg font-bold transition-colors mt-4">
+              Acessar Sistema
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    
+    <div id="app-container" class="hidden flex h-screen w-full">
+
       <?!= include('Components'); ?>
       
       <div class="flex-1 flex flex-col h-screen overflow-hidden">

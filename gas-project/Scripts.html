@@ -1,5 +1,37 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script>
+$(document).ready(function() {
+  $('#toggle-password').click(function() {
+    const input = $('#login-password');
+    const icon = $(this).find('i');
+    if (input.attr('type') === 'password') {
+      input.attr('type', 'text');
+      icon.removeClass('fa-eye').addClass('fa-eye-slash');
+    } else {
+      input.attr('type', 'password');
+      icon.removeClass('fa-eye-slash').addClass('fa-eye');
+    }
+  });
+
+  $('#login-form').submit(function(e) {
+    e.preventDefault();
+    const email = $('#login-email').val();
+    const pwd = $('#login-password').val();
+
+    if (email.trim().toLowerCase() === 'raphara99@gmail.com' && pwd === 'admin123') {
+      $('#login-error').addClass('hidden');
+      $('#login-container').fadeOut(400, function() {
+        $('#app-container').removeClass('hidden');
+        window.dispatchEvent(new Event('resize'));
+      });
+    } else {
+      $('#login-error').removeClass('hidden');
+      setTimeout(() => $('#login-error').addClass('hidden'), 3000);
+    }
+  });
+});
+</script>
+<script>
   function deleteCategory(name) {
     if(!confirm("Tem certeza que deseja excluir a categoria '" + name + "'? Esta ação não afetará as transações já importadas, apenas as regras de planejamento e categorização futura.")) return;
     
