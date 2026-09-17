@@ -22,7 +22,7 @@ function ensureCategoriesSheet() {
   }
 }
 
-function getGlobalCategories() {
+function getGlobalCategories(txDataPreloaded = null) {
   ensureCategoriesSheet();
   const catSheet = getCategoriesSheet();
   const catData = catSheet.getDataRange().getValues();
@@ -42,10 +42,16 @@ function getGlobalCategories() {
   }
 
   // Auto-sync from Transactions sheet
-  const txSheet = getTable('Transactions');
-  if (txSheet) {
-    const txData = txSheet.getDataRange().getValues();
-    let added = false;
+  let txData = txDataPreloaded;
+  if (!txData) {
+    const txSheet = getTable('Transactions');
+    if (txSheet) {
+      txData = txSheet.getDataRange().getValues();
+    }
+  }
+
+  if (txData && txData.length > 1) {
+    let newRows = [];
     for (let i = 1; i < txData.length; i++) {
       const row = txData[i];
       const catName = String(row[2] || '').trim();
@@ -53,20 +59,20 @@ function getGlobalCategories() {
       
       if (catName && catName !== 'Outros' && catName !== 'Revisar' && !existingNames.has(catName.toLowerCase())) {
         existingNames.add(catName.toLowerCase());
-        const newId = new Date().getTime() + Math.floor(Math.random() * 1000);
+        const newId = new Date().getTime() + Math.floor(Math.random() * 1000) + i;
         const profile = (tipo === 'Entrada' || catName.toLowerCase().includes('salário') || catName.toLowerCase().includes('receita')) ? 'Receita Variável' : 'Despesa Variável';
         cats.push({
           id: newId,
           name: catName,
           profile: profile
         });
-        catSheet.appendRow([newId, catName, profile]);
-        added = true;
+        newRows.push([newId, catName, profile]);
       }
     }
-    if (added) {
+    
+    if (newRows.length > 0) {
+      catSheet.getRange(catData.length + 1, 1, newRows.length, 3).setValues(newRows);
       SpreadsheetApp.flush();
-      
     }
   }
 
