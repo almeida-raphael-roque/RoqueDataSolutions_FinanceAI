@@ -22,6 +22,7 @@ $(document).ready(function() {
       $('#login-error').addClass('hidden');
       $('#login-container').fadeOut(400, function() {
         $('#app-container').removeClass('hidden');
+        navigateTo('page-dashboard', 'Visão Geral');
         window.dispatchEvent(new Event('resize'));
       });
     } else {
@@ -442,14 +443,10 @@ function openAddCategoryModal(macroProfile) {
             if (typeof populateRuleCategorySelect === 'function') populateRuleCategorySelect();
             if (typeof updateCategoryFilterDropdown === 'function') updateCategoryFilterDropdown();
           }
-          loadDashboard();
         })
         .withFailureHandler(function() {
-          loadDashboard();
         })
-        
     } else {
-      loadDashboard();
     }
 
     // Helper para preencher dinamicamente as categorias no modal de Nova Transação
