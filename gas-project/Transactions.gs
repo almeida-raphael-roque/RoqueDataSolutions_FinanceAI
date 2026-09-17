@@ -26,6 +26,7 @@ function clearTransactions(yearStr, monthStr) {
   backupForUndo();
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
+  const displayData = sheet.getDataRange().getDisplayValues();
   if (data.length <= 1) return true; // Somente cabeçalho
   
   const header = data[0];
@@ -33,7 +34,7 @@ function clearTransactions(yearStr, monthStr) {
   
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    if (!isMatch(row[5], yearStr, monthStr)) {
+    if (!isMatch(displayData[i][5], yearStr, monthStr)) {
       toKeep.push(row);
     }
   }
@@ -137,6 +138,7 @@ function isMatch(dateVal, yearStr, monthStr) {
 function getTransactions(year = 'all', month = 'all') {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
+  const displayData = sheet.getDataRange().getDisplayValues();
   if (data.length <= 1) return []; 
   
   let cats = [];
@@ -147,12 +149,17 @@ function getTransactions(year = 'all', month = 'all') {
   const rows = [];
   for (let i = data.length - 1; i >= 1; i--) { 
     const row = data[i];
-    if (isMatch(row[5], year, month)) {
-      // Formatação básica para retornar como string consistente
-      let dateStr = row[5];
-      if (dateStr instanceof Date) {
-        dateStr = Utilities.formatDate(dateStr, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const displayDate = displayData[i][5];
+    if (isMatch(displayDate, year, month)) {
+      let dateStr = displayDate;
+      // If it is in dd/mm/yyyy format from display, convert to yyyy-mm-dd so frontend parses it consistently
+      if (dateStr.includes('/')) {
+        let parts = dateStr.split('/');
+        if (parts.length === 3) {
+          dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
       }
+
       let tipo = String(row[3] || '').trim();
       const tipoL = tipo.toLowerCase();
       if (tipoL === 'saída' || tipoL === 'saida' || tipoL === 'despesa') tipo = 'Saída';
@@ -202,6 +209,7 @@ const MACRO_COLORS = {
 function getDashboardData(year = 'all', month = 'all') {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
+  const displayData = sheet.getDataRange().getDisplayValues();
   
   let cats = [];
   try { cats = getGlobalCategories(); } catch(e) {}
@@ -242,7 +250,7 @@ function getDashboardData(year = 'all', month = 'all') {
     if (tipoLower === 'saída' || tipoLower === 'saida' || tipoLower === 'despesa') tipo = 'Saída';
     else if (tipoLower === 'entrada' || tipoLower === 'receita') tipo = 'Entrada';
     const valor = parseValor(row[4]);
-    const dataVal = row[5];
+    const dataVal = displayData[i][5];
     
     // Parse date once
     const d = parseFlexDate(dataVal);
@@ -345,6 +353,7 @@ function getMonthShortName(m) {
 function getPlanningData(year) {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
+  const displayData = sheet.getDataRange().getDisplayValues();
   
   let cats = [];
   try { cats = getGlobalCategories(); } catch(e) {}
@@ -383,7 +392,7 @@ function getPlanningData(year) {
   
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const d = parseFlexDate(row[5]);
+    const d = parseFlexDate(displayData[i][5]);
     if (isNaN(d.getTime())) continue;
     if (d.getFullYear() !== targetYear) continue;
 
@@ -467,21 +476,27 @@ function getPlanningData(year) {
 function getTransactionsForCategorization() {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
+  const displayData = sheet.getDataRange().getDisplayValues();
   if (data.length <= 1) return [];
   
   const rows = [];
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    let dateStr = row[5];
-    if (dateStr instanceof Date) {
-      dateStr = Utilities.formatDate(dateStr, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    let displayDate = displayData[i][5];
+    let dateStr = displayDate;
+    if (dateStr.includes('/')) {
+      let parts = dateStr.split('/');
+      if (parts.length === 3) {
+        dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
     }
+
     rows.push({
       rowIndex: i + 1,
-      origem: row[0] || 'Importado',
+      origem: String(row[0] || 'Importado'),
       descricao: String(row[1] || '').trim(),
       categoria: String(row[2] || '').trim(),
-      tipo: row[3] || 'Saída',
+      tipo: String(row[3] || 'Saída'),
       valor: parseValor(row[4]),
       data: dateStr || ''
     });
@@ -566,7 +581,7 @@ function exportToExcel() {
 
 function exportToCsv() {
   const sheet = getTable('Transactions');
-  const data = sheet.getDataRange().getValues();
+  const data = sheet.getDataRange().getDisplayValues();
   
   const csvLines = data.map(row => {
     return row.map(cell => {
