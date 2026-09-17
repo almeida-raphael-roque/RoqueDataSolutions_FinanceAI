@@ -12,6 +12,7 @@
       <div id="planning-current-month-badge" class="px-3 py-1.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-bold uppercase tracking-wider animate-pulse hidden">
         Hoje: <span id="planning-current-month-text"></span>
       </div>
+      
       <select id="planning-year-select" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary focus:border-primary block w-32 p-2.5 shadow-sm outline-none transition-colors">
         <!-- Options populated by JS -->
       </select>
@@ -72,6 +73,26 @@
 
   <!-- Main Matrix -->
   <div id="planning-matrix-container" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col min-h-[400px]">
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div class="flex-1 w-full max-w-md relative">
+        <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Detalhamento Mês a Mês</h3>
+      </div>
+      <div class="flex items-center gap-3 w-full sm:w-auto">
+        <div class="flex items-center gap-2 border border-gray-200 dark:border-gray-700 p-1 rounded-lg bg-gray-50 dark:bg-slate-800">
+          <button onclick="toggleAllMacros(false)" class="w-28 flex items-center justify-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm">
+            <span>Recolher</span>
+            <i class="fa-solid fa-chevron-up"></i>
+          </button>
+          <button onclick="toggleAllMacros(true)" class="w-28 flex items-center justify-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm">
+            <span>Expandir</span>
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
+        </div>
+        <button onclick="openAddCategoryModal()" class="bg-primary hover:bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm h-[34px]">
+          <i class="fa-solid fa-plus mr-2"></i> <span>Nova</span>
+        </button>
+      </div>
+    </div>
     <div class="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
       <table class="w-full text-sm text-left whitespace-nowrap">
         <thead id="planning-thead" class="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-900/50 sticky top-0 z-20 shadow-sm">
@@ -131,6 +152,43 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Category Modal -->
+<div id="modal-add-category" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-[100] flex items-center justify-center">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl animate-scale-in">
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50">
+      <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+        <i class="fa-solid fa-folder-plus text-primary"></i>
+        <span>Nova Categoria</span>
+      </h3>
+      <button type="button" onclick="$('#modal-add-category').addClass('hidden')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+        <i class="fa-solid fa-times text-xl"></i>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome da Categoria</label>
+        <input type="text" id="add-cat-name" class="w-full px-4 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent dark:text-white" placeholder="Ex: Assinaturas">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Macro / Perfil</label>
+        <select id="add-cat-macro" class="w-full px-4 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent dark:text-white">
+          <option value="Despesa Fixa">Despesa Fixa</option>
+          <option value="Despesa Variável">Despesa Variável Essencial</option>
+          <option value="Despesa Discricionária">Despesa Discricionária</option>
+          <option value="Receita Variável">Receita (Entrada)</option>
+        </select>
+      </div>
+    </div>
+    <div class="px-6 py-4 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+      <button type="button" onclick="$('#modal-add-category').addClass('hidden')" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl transition-colors font-medium">Cancelar</button>
+      <button type="button" onclick="submitAddCategory(this)" class="px-4 py-2 bg-primary hover:bg-blue-700 text-white rounded-xl transition-colors shadow-sm font-medium flex items-center space-x-2">
+        <i class="fa-solid fa-check"></i>
+        <span>Adicionar</span>
+      </button>
     </div>
   </div>
 </div>

@@ -1,4 +1,91 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script>
+  function deleteCategory(name) {
+    if(!confirm("Tem certeza que deseja excluir a categoria '" + name + "'? Esta ação não afetará as transações já importadas, apenas as regras de planejamento e categorização futura.")) return;
+    
+    // Mostra indicador global de loading
+    const oldHtml = $('#planning-tbody').html();
+    $('#planning-tbody').html('<tr><td colspan="13" class="text-center py-10"><i class="fa-solid fa-circle-notch fa-spin text-primary text-3xl"></i></td></tr>');
+    
+    google.script.run
+      .withSuccessHandler(function() {
+        invalidateCache();
+        if(typeof renderCategoriesList === 'function') renderCategoriesList();
+        loadPlanning();
+      })
+      .withFailureHandler(function(err) {
+        alert("Erro ao excluir categoria: " + err.message);
+        $('#planning-tbody').html(oldHtml);
+      })
+      .deleteCategory(name);
+  }
+
+
+  function toggleAllMacros(expand) {
+    $('.planning-toggle-row').each(function() {
+      const targetClass = $(this).data('target');
+      const icon = $(this).find('i.fa-chevron-down');
+      
+      // Select the child rows (we target by the class)
+      const children = $('.' + targetClass);
+      
+      if (!children.length) return;
+      
+      const isHidden = children.first().hasClass('hidden');
+      
+      if (expand && isHidden) {
+        children.removeClass('hidden');
+        icon.css('transform', 'rotate(-180deg)');
+      } else if (!expand && !isHidden) {
+        children.addClass('hidden');
+        icon.css('transform', 'rotate(0deg)');
+      }
+    });
+  }
+
+</script>
+<script>
+function openAddCategoryModal(macroProfile) {
+    $('#add-cat-name').val('');
+    if(macroProfile) {
+      $('#add-cat-macro').val(macroProfile);
+    } else {
+      $('#add-cat-macro').val('Despesa Fixa');
+    }
+    $('#modal-add-category').removeClass('hidden');
+    setTimeout(() => $('#add-cat-name').focus(), 100);
+  }
+
+  function submitAddCategory(btn) {
+    const name = $('#add-cat-name').val().trim();
+    const profile = $('#add-cat-macro').val();
+    
+    if(!name) {
+      alert("Por favor, preencha o nome da categoria.");
+      return;
+    }
+    
+    const origText = $(btn).html();
+    $(btn).html('<i class="fa-solid fa-circle-notch fa-spin"></i>').prop('disabled', true);
+    
+    google.script.run
+      .withSuccessHandler(function() {
+        $(btn).html(origText).prop('disabled', false);
+        $('#modal-add-category').addClass('hidden');
+        alert("Categoria adicionada com sucesso!");
+        
+        invalidateCache();
+        if(typeof renderCategoriesList === 'function') renderCategoriesList();
+        loadPlanning();
+      })
+      .withFailureHandler(function(err) {
+        $(btn).html(origText).prop('disabled', false);
+        alert("Erro ao adicionar categoria: " + err.message);
+      })
+      .addCategory(name, profile);
+  }
+
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -3835,7 +3922,12 @@ $(document).ready(function() {
       });
       recYearTotal += catYearTotal;
       recChildren += `<tr class="row-receitas hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
-        <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8">${cat}</td>
+        <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
+          <span>${cat}</span>
+          <button type="button" onclick="deleteCategory('${cat}')" class="opacity-0 group-hover:opacity-100 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded w-5 h-5 flex items-center justify-center transition-all" title="Excluir Categoria">
+            <i class="fa-solid fa-minus text-[10px]"></i>
+          </button>
+        </td>
         ${cellsHtml}
         <td class="px-4 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 border-l border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30">${formatCurrency(catYearTotal)}</td>
       </tr>`;
@@ -3872,7 +3964,12 @@ $(document).ready(function() {
         });
         yearTotal += catYearTotal;
         childrenHtml += `<tr class="${rowClass} hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
-          <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8">${cat}</td>
+          <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
+            <span>${cat}</span>
+            <button type="button" onclick="deleteCategory('${cat}')" class="opacity-0 group-hover:opacity-100 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded w-5 h-5 flex items-center justify-center transition-all" title="Excluir Categoria">
+              <i class="fa-solid fa-minus text-[10px]"></i>
+            </button>
+          </td>
           ${cellsHtml}
           <td class="px-4 py-2 text-right font-semibold ${textClassTotal} border-l border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30">${formatCurrency(catYearTotal)}</td>
         </tr>`;

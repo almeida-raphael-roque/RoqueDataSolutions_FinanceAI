@@ -84,3 +84,22 @@ function saveGlobalCategories(categories) {
   
   return true;
 }
+
+function addCategory(name, profile) {
+  const sheet = getCategoriesSheet();
+  const newId = new Date().getTime() + Math.floor(Math.random() * 1000);
+  sheet.appendRow([newId, name, profile]);
+  return true;
+}
+
+function deleteCategory(name) {
+  const sheet = getCategoriesSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]).trim().toLowerCase() === String(name).trim().toLowerCase()) {
+      sheet.deleteRow(i + 1);
+      return true;
+    }
+  }
+  return false;
+}
