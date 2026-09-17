@@ -1,5 +1,22 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script>
+
+// Helper to parse "YYYY-MM-DD" safely without timezone shifts
+  function parseLocalDateString(dateStr) {
+    if (!dateStr) return new Date();
+    const s = String(dateStr);
+    const datePart = s.indexOf('T') !== -1 ? s.split('T')[0] : s;
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    }
+    const ptParts = datePart.split('/');
+    if (ptParts.length === 3) {
+      return new Date(parseInt(ptParts[2], 10), parseInt(ptParts[1], 10) - 1, parseInt(ptParts[0], 10));
+    }
+    return new Date(dateStr);
+  }
+
 $(document).ready(function() {
   $('#toggle-password').click(function() {
     const input = $('#login-password');
@@ -2262,8 +2279,8 @@ function openAddCategoryModal(macroProfile) {
         if (currentSortCol === 'valor') {
           cmp = Number(valA || 0) - Number(valB || 0);
         } else if (currentSortCol === 'data') {
-          const dA = new Date(valA).getTime() || 0;
-          const dB = new Date(valB).getTime() || 0;
+          const dA = parseLocalDateString(valA).getTime() || 0;
+          const dB = parseLocalDateString(valB).getTime() || 0;
           cmp = dA - dB;
         } else {
           cmp = String(valA || '').localeCompare(String(valB || ''), 'pt-BR', { sensitivity: 'base' });
@@ -3435,7 +3452,7 @@ function scRender() {
   
   const txs = (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : [];
   const parsedTxs = txs.map(t => {
-    const d = new Date(t.data + 'T00:00:00');
+    const d = parseLocalDateString(t.data);
     return { ...t, parsedDate: d };
   });
 
@@ -4092,7 +4109,7 @@ $(document).ready(function() {
     let filtered = rows.filter(r => r.categoria === cat && r.tipo === tipo);
 
     filtered = filtered.filter(r => {
-      const d = new Date(r.data);
+      const d = parseLocalDateString(r.data);
       return d.getFullYear() === year && (d.getMonth() + 1) === month;
     });
 
@@ -4101,7 +4118,7 @@ $(document).ready(function() {
     } else {
       $('#planning-drawer-empty').addClass('hidden');
       filtered.forEach(t => {
-        const d = new Date(t.data);
+        const d = parseLocalDateString(t.data);
         const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}`;
         const color = t.tipo === 'Entrada' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
         list.append(`
