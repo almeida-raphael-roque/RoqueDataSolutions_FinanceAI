@@ -139,11 +139,10 @@ function getTransactions(year = 'all', month = 'all') {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return []; 
   
+  let cats = [];
+  try { cats = getGlobalCategories(); } catch(e) {}
   const catNameMap = {};
-  try {
-    const cats = getGlobalCategories();
-    cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
-  } catch(e) {}
+  cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
   
   const rows = [];
   for (let i = data.length - 1; i >= 1; i--) { 
@@ -175,20 +174,14 @@ function getTransactions(year = 'all', month = 'all') {
   return rows;
 }
 
-function getMacroCategory(categoria, descricao) {
+function getMacroCategory(categoria, descricao, catMacroMap) {
   const catLower = String(categoria || '').toLowerCase().trim();
   const descLower = String(descricao || '').toLowerCase().trim();
   
   // 1. Check Global Categories (Single Source of Truth)
-  try {
-    const cats = getGlobalCategories();
-    const existing = cats.find(c => String(c.name).toLowerCase().trim() === catLower);
-    if (existing && existing.profile) {
-      if (existing.profile.includes('Fixa')) return 'Fixas';
-      if (existing.profile.includes('Variável')) return 'Variáveis Essenciais';
-      return 'Discricionárias';
-    }
-  } catch(e) {}
+  if (catMacroMap && catMacroMap[catLower]) {
+      return catMacroMap[catLower];
+  }
   
   // 2. Fallback heuristics for unmapped categories
   if (catLower.includes('moradia') || descLower.includes('aluguel') || descLower.includes('internet') || descLower.includes('condomínio') || catLower.includes('educação') || catLower.includes('telefone') || catLower.includes('celular') || descLower.includes('vivo') || descLower.includes('claro') || descLower.includes('tim')) return 'Fixas';
@@ -210,11 +203,18 @@ function getDashboardData(year = 'all', month = 'all') {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
   
+  let cats = [];
+  try { cats = getGlobalCategories(); } catch(e) {}
   const catNameMap = {};
-  try {
-    const cats = getGlobalCategories();
-    cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
-  } catch(e) {}
+  const catMacroMap = {};
+  cats.forEach(c => {
+    catNameMap[String(c.name).toLowerCase()] = c.name;
+    if (c.profile) {
+      if (c.profile.includes('Fixa')) catMacroMap[String(c.name).toLowerCase()] = 'Fixas';
+      else if (c.profile.includes('Variável')) catMacroMap[String(c.name).toLowerCase()] = 'Variáveis Essenciais';
+      else catMacroMap[String(c.name).toLowerCase()] = 'Discricionárias';
+    }
+  });
   
   let income = 0;
   let expense = 0;
@@ -264,7 +264,7 @@ function getDashboardData(year = 'all', month = 'all') {
         incomeCategoryGrouped[categoria] += valor;
       } else if (tipo === 'Saída') {
         expense += valor;
-        const macro = getMacroCategory(categoria, desc);
+        const macro = getMacroCategory(categoria, desc, typeof catMacroMap !== "undefined" ? catMacroMap : null);
         macroGrouped[macro] += valor;
 
         if (!categoryGrouped[categoria]) categoryGrouped[categoria] = { value: 0, macros: { 'Fixas': 0, 'Variáveis Essenciais': 0, 'Discricionárias': 0 } };
@@ -346,6 +346,17 @@ function getPlanningData(year) {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();
   
+  let cats = [];
+  try { cats = getGlobalCategories(); } catch(e) {}
+  const catMacroMap = {};
+  cats.forEach(c => {
+    if (c.profile) {
+      if (c.profile.includes('Fixa')) catMacroMap[String(c.name).toLowerCase()] = 'Fixas';
+      else if (c.profile.includes('Variável')) catMacroMap[String(c.name).toLowerCase()] = 'Variáveis Essenciais';
+      else catMacroMap[String(c.name).toLowerCase()] = 'Discricionárias';
+    }
+  });
+  
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const currentYear = now.getFullYear();
@@ -397,7 +408,7 @@ function getPlanningData(year) {
       incomeCategories[categoria][mIdx][txStatus] += valor;
       incomeCategories[categoria][mIdx].total += valor;
     } else {
-      let macro = getMacroCategory(categoria, desc);
+      let macro = getMacroCategory(categoria, desc, typeof catMacroMap !== "undefined" ? catMacroMap : null);
       if (!expenseMacros[macro]) macro = 'Discricionárias';
       if (!expenseMacros[macro][categoria]) {
         expenseMacros[macro][categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
