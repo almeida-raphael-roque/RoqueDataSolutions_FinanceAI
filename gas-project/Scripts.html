@@ -1468,12 +1468,12 @@ function openAddCategoryModal(macroProfile) {
        
        let missing = pendingImport.filter(t => !t.categoria || t.categoria === 'Revisar');
        if (missing.length > 0) {
-         if(!confirm(`Existem ${missing.length} transações sem categoria definida. Deseja importa-las como 'Outros'?`)) {
+         if(!confirm(`Existem ${missing.length} transações sem categoria definida. Elas serão importadas para serem classificadas mais tarde na página de Categorias. Deseja continuar com a importação?`)) {
            $(this).find('.fa-spinner').remove();
            return;
          }
          pendingImport.forEach(t => {
-           if(!t.categoria || t.categoria === 'Revisar') t.categoria = 'Outros';
+           if(!t.categoria || t.categoria === 'Revisar') t.categoria = '';
          });
        }
 
@@ -2891,6 +2891,7 @@ function openAddCategoryModal(macroProfile) {
           }
         }
 
+        const origCat = String(r.categoria || '').trim();
         return {
           rowIndex: r.rowIndex || (index + 1),
           data: r.data || '',
@@ -2899,6 +2900,8 @@ function openAddCategoryModal(macroProfile) {
           descricao: rawDesc,
           normDesc: normDesc || rawDesc,
           categoria: cat,
+          originalCategoria: origCat,
+          isUpdated: (cat !== '' && cat !== 'Revisar' && cat !== origCat),
           origem: origem,
           confianca: confianca,
           saveRule: saveRule
@@ -2926,7 +2929,7 @@ function openAddCategoryModal(macroProfile) {
       $('#sync-summary-subtitle').text(`${total} transações analisadas (${autoCount} reconhecidas, ${pendingCount} para revisar)`);
 
       if (pendingCount > 0) {
-        $('#sync-footer-status').html(`<span class="text-amber-600 font-semibold"><i class="fa-solid fa-circle-exclamation mr-1.5"></i>${pendingCount} transação(ões) aguardando definição de categoria</span>`);
+        $('#sync-footer-status').html(`<span class="text-amber-600 font-semibold"><i class="fa-solid fa-circle-exclamation mr-1.5"></i>${pendingCount} transação(ões) pendente(s) de categoria</span>`);
       } else {
         $('#sync-footer-status').html(`<span class="text-emerald-600 font-semibold"><i class="fa-solid fa-circle-check mr-1.5"></i>Todas as ${total} transações estão categorizadas!</span>`);
       }
@@ -2989,7 +2992,7 @@ function openAddCategoryModal(macroProfile) {
         } else if (t.origem === 'Existente') {
           originBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800"><i class="fa-solid fa-check-double mr-1 text-[10px]"></i>Existente</span>`;
         } else {
-          originBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800"><i class="fa-solid fa-triangle-exclamation mr-1 text-[10px]"></i>Revisar</span>`;
+          originBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"><i class="fa-solid fa-triangle-exclamation mr-1 text-[10px]"></i>Pendente</span>`;
         }
 
         const isUncategorized = (!t.categoria || t.categoria === 'Revisar');
@@ -3121,6 +3124,7 @@ function openAddCategoryModal(macroProfile) {
           t.confianca = 'alta';
           t.origem = 'Usuário';
           t.saveRule = true; // Auto-mark rule to be remembered permanently
+          t.isUpdated = true;
           affectedCount++;
         }
       });
@@ -3165,7 +3169,7 @@ function openAddCategoryModal(macroProfile) {
     $(document).on('click', '.sync-filter-btn', function() {
       $('.sync-filter-btn').removeClass('bg-gray-900 text-white border-gray-900')
         .addClass('bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 border-gray-200 dark:border-slate-700');
-      $(this).removeClass('bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 text-red-600 text-emerald-700 border-gray-200 dark:border-slate-700 border-red-200 border-emerald-200')
+      $(this).removeClass('bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 text-red-600 text-amber-600 text-emerald-700 border-gray-200 dark:border-slate-700 border-red-200 border-amber-200 border-emerald-200')
         .addClass('bg-gray-900 text-white border-gray-900');
       syncFilter = $(this).data('filter');
       renderSyncTable();
@@ -3195,36 +3199,34 @@ function openAddCategoryModal(macroProfile) {
 
     // Save and Apply Categorization to Transactions
     $('#btn-save-sync').click(function() {
-      const pending = syncTransactions.filter(t => !t.categoria || t.categoria === '' || t.categoria === 'Revisar');
-      if (pending.length > 0) {
-        if (!confirm(`Atenção: ainda existem ${pending.length} transações sem categoria definida. Deseja classificá-las como "Outros" e continuar?`)) {
-          return;
-        }
-        syncTransactions.forEach(t => {
-          if (!t.categoria || t.categoria === '' || t.categoria === 'Revisar') {
-            t.categoria = 'Outros';
-          }
-        });
+      // Save only transactions that were actually updated (assigned/changed category)
+      const updated = syncTransactions.filter(t => {
+        const cat = String(t.categoria || '').trim();
+        if (!cat || cat === 'Revisar') return false;
+        return t.isUpdated || (cat !== String(t.originalCategoria || '').trim());
+      });
+
+      if (updated.length === 0 && syncDeletedRowIndices.length === 0) {
+        alert("Nenhuma transação foi atualizada para salvar. Altere a categoria de pelo menos uma transação antes de salvar.");
+        return;
       }
 
       const btn = $(this);
       const originalHtml = btn.html();
       btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin mr-2"></i> Salvando...');
 
-      // Save into CATEGORY_OVERRIDES for instant propagation across all tabs and months
-      syncTransactions.forEach(t => {
-        if (t.categoria) {
-          const rawUpper = String(t.descricao || '').trim().toUpperCase();
-          const normUpper = normalizeDescription(t.descricao || '').toUpperCase();
-          if (rawUpper) CATEGORY_OVERRIDES[rawUpper] = t.categoria;
-          if (normUpper) CATEGORY_OVERRIDES[normUpper] = t.categoria;
-        }
+      // Save into CATEGORY_OVERRIDES ONLY for actually updated transactions
+      updated.forEach(t => {
+        const rawUpper = String(t.descricao || '').trim().toUpperCase();
+        const normUpper = normalizeDescription(t.descricao || '').toUpperCase();
+        if (rawUpper) CATEGORY_OVERRIDES[rawUpper] = t.categoria;
+        if (normUpper) CATEGORY_OVERRIDES[normUpper] = t.categoria;
       });
       try {
         localStorage.setItem('finance_category_overrides', JSON.stringify(CATEGORY_OVERRIDES));
       } catch(e) {}
 
-      // Update GLOBAL_MOCK_TRANSACTIONS across all months
+      // Update GLOBAL_MOCK_TRANSACTIONS across all months for updated ones only
       GLOBAL_MOCK_TRANSACTIONS = GLOBAL_MOCK_TRANSACTIONS.filter(t => {
         const raw = String(t.descricao || '').trim().toUpperCase();
         return !DELETED_OVERRIDES.has(`${t.data}_${t.valor}_${raw}`);
@@ -3239,7 +3241,8 @@ function openAddCategoryModal(macroProfile) {
         return t;
       });
 
-      const updates = syncTransactions.map(t => ({
+      // Send only actually updated transactions in updates
+      const updates = updated.map(t => ({
         rowIndex: t.rowIndex,
         categoria: t.categoria,
         descricao: t.descricao
@@ -3247,7 +3250,7 @@ function openAddCategoryModal(macroProfile) {
 
       const rulesToSave = [];
       const savedPatterns = new Set();
-      syncTransactions.forEach(t => {
+      updated.forEach(t => {
         if (t.saveRule && t.categoria && t.normDesc) {
           const pat = t.normDesc.toUpperCase();
           if (!savedPatterns.has(pat)) {
@@ -3264,12 +3267,16 @@ function openAddCategoryModal(macroProfile) {
         }
       });
 
+      const successFeedback = updated.length === 1
+        ? `Sucesso! 1 transação foi atualizada e salva com sucesso.`
+        : `Sucesso! ${updated.length} transações foram atualizadas e salvas com sucesso.`;
+
       if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run
           .withSuccessHandler(function() {
             btn.prop('disabled', false).html(originalHtml);
             $('#sync-categorize-modal').addClass('hidden');
-            alert(`Sucesso! Categorias atualizadas e regras aplicadas com sucesso.`);
+            alert(successFeedback);
             renderCategoriesList();
             renderRulesList();
             invalidateCache();
@@ -3295,7 +3302,7 @@ function openAddCategoryModal(macroProfile) {
 
           btn.prop('disabled', false).html(originalHtml);
           $('#sync-categorize-modal').addClass('hidden');
-          alert(`Sucesso! Categorias atualizadas e regras aplicadas com sucesso.`);
+          alert(successFeedback);
           renderCategoriesList();
           renderRulesList();
           invalidateCache();

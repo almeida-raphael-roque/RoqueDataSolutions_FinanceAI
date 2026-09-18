@@ -164,8 +164,8 @@ function getTransactions(year = 'all', month = 'all') {
       const tipoL = tipo.toLowerCase();
       if (tipoL === 'saída' || tipoL === 'saida' || tipoL === 'despesa') tipo = 'Saída';
       else if (tipoL === 'entrada' || tipoL === 'receita') tipo = 'Entrada';
-      let categoria = String(row[2] || '').trim() || 'Outros';
-      if (catNameMap[categoria.toLowerCase()]) {
+      let categoria = String(row[2] || '').trim();
+      if (categoria && catNameMap[categoria.toLowerCase()]) {
         categoria = catNameMap[categoria.toLowerCase()];
       }
       rows.push({
@@ -512,14 +512,11 @@ function saveCategorizedTransactionsBatch(updates, rulesToSave, deletedRowIndice
   
   // updates is array of { rowIndex, categoria, descricao }
   const updateMap = {};
-  const descMap = {};
   if (updates && updates.length > 0) {
     updates.forEach(u => {
-      if (u.rowIndex) {
-        updateMap[u.rowIndex] = u.categoria;
-      }
-      if (u.descricao && u.categoria) {
-        descMap[String(u.descricao).trim().toUpperCase()] = u.categoria;
+      const cat = String(u.categoria || '').trim();
+      if (u.rowIndex && cat && cat !== 'Revisar') {
+        updateMap[u.rowIndex] = cat;
       }
     });
   }
@@ -536,12 +533,8 @@ function saveCategorizedTransactionsBatch(updates, rulesToSave, deletedRowIndice
     }
 
     const row = data[i];
-    const rowDesc = String(row[1] || '').trim().toUpperCase();
     if (updateMap[rNum] !== undefined) {
       row[2] = updateMap[rNum]; // Column index 2 is categoria
-      modified = true;
-    } else if (descMap[rowDesc] !== undefined) {
-      row[2] = descMap[rowDesc]; // Overwrite category matching this description across all rows
       modified = true;
     }
     newData.push(row);
