@@ -84,8 +84,23 @@ $(document).ready(function() {
     }
   }
 
-  function editCategoryFromPlanning(name) {
-    if(!name) return;
+  window.editCategoryFromPlanning = function(target) {
+    if(!target) return;
+    let name = '';
+    if (typeof target === 'string') {
+      name = decodeURIComponent(target).trim();
+    } else if (target.getAttribute) {
+      name = decodeURIComponent(target.getAttribute('data-cat') || '').trim();
+    } else if (typeof $ !== 'undefined' && $(target).length) {
+      name = decodeURIComponent($(target).attr('data-cat') || '').trim();
+    }
+    if (!name) return;
+
+    // Ensure modal is attached to body so it cannot be hidden by any hidden-page container
+    if ($('#category-modal').length && $('#category-modal').closest('.hidden-page').length > 0) {
+      $('body').append($('#category-modal'));
+    }
+
     let cat = (typeof GLOBAL_CATEGORIES !== 'undefined') ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === name.toLowerCase()) : null;
     
     if (!cat) {
@@ -121,7 +136,7 @@ $(document).ready(function() {
     $('#btn-delete-category-modal').removeClass('hidden');
     $('#category-modal').removeClass('hidden');
     setTimeout(() => $('#cat-name').focus(), 100);
-  }
+  };
 
 
   function toggleAllMacros(expand) {
@@ -2746,6 +2761,18 @@ function openAddCategoryModal(macroProfile) {
         populateTransactionCategorySelect(name);
       }
 
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(function() {
+            invalidateCache();
+            if (typeof loadPlanning === 'function') loadPlanning();
+          })
+          .withFailureHandler(function(err) {
+            console.error("Erro ao salvar categoria no Google Sheets:", err);
+          })
+          .updateCategory(id, name, profile);
+      }
+
       // Invalidate and reload planning matrix immediately so moved categories reflect
       invalidateCache();
       if (typeof loadPlanning === 'function') {
@@ -2762,6 +2789,9 @@ function openAddCategoryModal(macroProfile) {
         $('#cat-profile').val(cat.profile);
         $('#category-modal-title').html('<i class="fa-solid fa-pen-to-square text-primary text-base"></i><span>Editar Categoria</span>');
         $('#btn-delete-category-modal').removeClass('hidden');
+        if ($('#category-modal').closest('.hidden-page').length > 0) {
+          $('body').append($('#category-modal'));
+        }
         $('#category-modal').removeClass('hidden');
         setTimeout(() => $('#cat-name').focus(), 100);
       }
@@ -2770,14 +2800,15 @@ function openAddCategoryModal(macroProfile) {
     // Planning Matrix specific category edit button
     $(document).on('click', '.btn-edit-planning-cat', function(e) {
       e.stopPropagation();
-      const catName = decodeURIComponent($(this).data('cat'));
-      editCategoryFromPlanning(catName);
+      e.preventDefault();
+      editCategoryFromPlanning(this);
     });
 
     // Planning Matrix specific category delete button
     $(document).on('click', '.btn-delete-planning-cat', function(e) {
       e.stopPropagation();
-      const catName = decodeURIComponent($(this).data('cat'));
+      e.preventDefault();
+      const catName = decodeURIComponent($(this).attr('data-cat') || $(this).data('cat'));
       deleteCategory(catName);
     });
 
@@ -2791,6 +2822,9 @@ function openAddCategoryModal(macroProfile) {
       if(confirm(`Tem certeza que deseja excluir a categoria "${catName}"?`)) {
         GLOBAL_CATEGORIES = GLOBAL_CATEGORIES.filter(c => c.id != id);
         saveCategoriesToStorage();
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run.deleteCategory(catName);
+        }
         $('#category-modal').addClass('hidden');
         renderCategoriesList();
         populateRuleCategorySelect();
@@ -2813,6 +2847,9 @@ function openAddCategoryModal(macroProfile) {
       if(confirm(`Tem certeza que deseja excluir a categoria "${catName}"?`)) {
         GLOBAL_CATEGORIES = GLOBAL_CATEGORIES.filter(c => c.id != id);
         saveCategoriesToStorage();
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run.deleteCategory(catName);
+        }
         renderCategoriesList();
         populateRuleCategorySelect();
         if (typeof updateCategoryFilterDropdown === 'function') {
@@ -4099,11 +4136,11 @@ $(document).ready(function() {
         <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
           <span class="truncate pr-2" title="${cat}">${cat}</span>
           <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
-            <button type="button" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
-              <i class="fa-solid fa-pen text-[10px]"></i>
+            <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
+              <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
             </button>
-            <button type="button" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
-              <i class="fa-solid fa-minus text-[10px]"></i>
+            <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+              <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
             </button>
           </div>
         </td>
@@ -4146,11 +4183,11 @@ $(document).ready(function() {
           <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
             <span class="truncate pr-2" title="${cat}">${cat}</span>
             <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
-              <button type="button" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
-                <i class="fa-solid fa-pen text-[10px]"></i>
+              <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
+                <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
               </button>
-              <button type="button" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
-                <i class="fa-solid fa-minus text-[10px]"></i>
+              <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+                <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
               </button>
             </div>
           </td>
