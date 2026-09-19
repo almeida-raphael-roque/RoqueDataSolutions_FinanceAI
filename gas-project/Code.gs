@@ -4,7 +4,7 @@
 function doGet(e) {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
-    .setTitle('Finance Intelligence')
+    .setTitle('fin.ally')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
