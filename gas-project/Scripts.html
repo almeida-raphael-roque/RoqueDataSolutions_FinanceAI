@@ -4098,25 +4098,27 @@ $(document).ready(function() {
     else if (sum.projectedBalance > 0) projBalEl.addClass('text-purple-600 dark:text-purple-400');
     else projBalEl.addClass('text-gray-900 dark:text-white');
 
-    let theadHtml = `<tr><th class="px-4 py-3 sticky left-0 z-10 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 min-w-[200px]">Categoria</th>`;
+    let theadHtml = `<tr><th class="px-4 py-3 planning-sticky-col planning-sticky-header planning-th-cat border-r border-gray-200 dark:border-gray-700">Categoria</th>`;
     data.monthsMeta.forEach(m => {
       let style = '';
       if (m.status === 'realized') style = 'text-gray-400 dark:text-gray-500 font-normal';
       else if (m.status === 'current') style = 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 ring-2 ring-inset ring-primary font-bold rounded-t-md';
       else style = 'text-purple-600 dark:text-purple-400 font-medium';
       
-      theadHtml += `<th class="px-3 py-3 text-center min-w-[100px] ${style}">${m.name}</th>`;
+      theadHtml += `<th class="px-3 py-3 text-center min-w-[105px] ${style}">${m.name}</th>`;
     });
-    theadHtml += `<th class="px-4 py-3 text-right bg-gray-50 dark:bg-gray-900 font-bold border-l border-gray-200 dark:border-gray-700">Total Ano</th></tr>`;
+    theadHtml += `<th class="px-4 py-3 text-right bg-gray-50 dark:bg-gray-900 font-bold border-l border-gray-200 dark:border-gray-700 min-w-[120px]">Total Ano</th></tr>`;
     $('#planning-thead').html(theadHtml);
 
     let tbodyHtml = '';
 
     // RECEITAS
-    let recMasterHtml = `<tr class="planning-toggle-row cursor-pointer select-none transition-colors bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300" data-target="row-receitas">
-      <td class="px-4 py-3 sticky left-0 z-10 font-bold flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border-r border-gray-200 dark:border-gray-700">
-        <span>Receitas</span>
-        <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+    let recMasterHtml = `<tr class="planning-toggle-row cursor-pointer select-none transition-colors bg-[#ecfdf5] dark:bg-[#064e3b] text-emerald-800 dark:text-emerald-200" data-target="row-receitas">
+      <td class="px-4 py-3 planning-sticky-col planning-sticky-body planning-rec-master font-bold border-r border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between w-full">
+          <span>Receitas</span>
+          <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+        </div>
       </td>`;
     
     let recTotals = Array(12).fill(0);
@@ -4132,16 +4134,18 @@ $(document).ready(function() {
         cellsHtml += `<td class="px-3 py-2 text-center planning-cell-action cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" data-cat="${cat}" data-month="${idx+1}" data-tipo="Entrada">${formatCell(m)}</td>`;
       });
       recYearTotal += catYearTotal;
-      recChildren += `<tr class="row-receitas hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
-        <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
-          <span class="truncate pr-2" title="${cat}">${cat}</span>
-          <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
-            <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
-              <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
-            </button>
-            <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
-              <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
-            </button>
+      recChildren += `<tr class="row-receitas hidden bg-white dark:bg-[#1e293b] hover:bg-gray-50 dark:hover:bg-[#334155] transition-colors group">
+        <td class="px-4 py-2 planning-sticky-col planning-sticky-body planning-child-cat border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+          <div class="flex items-center justify-between w-full pl-6">
+            <span class="truncate pr-2" title="${cat}">${cat}</span>
+            <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
+              <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
+                <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
+              </button>
+              <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+                <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
+              </button>
+            </div>
           </div>
         </td>
         ${cellsHtml}
@@ -4157,13 +4161,15 @@ $(document).ready(function() {
     tbodyHtml += recMasterHtml + recChildren;
 
     // DESPESAS
-    const renderMacro = (macroName, rowClass, colorClasses, colorClassesTd, textClassTotal) => {
+    const renderMacro = (macroName, rowClass, colorClasses, stickyMasterClass, textClassTotal) => {
       if (!data.expenseMacros[macroName] || Object.keys(data.expenseMacros[macroName]).length === 0) return;
       
       let masterHtml = `<tr class="planning-toggle-row cursor-pointer select-none transition-colors ${colorClasses}" data-target="${rowClass}">
-        <td class="px-4 py-3 sticky left-0 z-10 font-bold flex items-center justify-between ${colorClassesTd} border-r border-gray-200 dark:border-gray-700">
-          <span>${macroName}</span>
-          <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+        <td class="px-4 py-3 planning-sticky-col planning-sticky-body ${stickyMasterClass} font-bold border-r border-gray-200 dark:border-gray-700">
+          <div class="flex items-center justify-between w-full">
+            <span>${macroName}</span>
+            <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+          </div>
         </td>`;
       
       let totals = Array(12).fill(0);
@@ -4179,16 +4185,18 @@ $(document).ready(function() {
           cellsHtml += `<td class="px-3 py-2 text-center planning-cell-action cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" data-cat="${cat}" data-month="${idx+1}" data-tipo="Saída">${formatCell(m)}</td>`;
         });
         yearTotal += catYearTotal;
-        childrenHtml += `<tr class="${rowClass} hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
-          <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
-            <span class="truncate pr-2" title="${cat}">${cat}</span>
-            <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
-              <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
-                <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
-              </button>
-              <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
-                <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
-              </button>
+        childrenHtml += `<tr class="${rowClass} hidden bg-white dark:bg-[#1e293b] hover:bg-gray-50 dark:hover:bg-[#334155] transition-colors group">
+          <td class="px-4 py-2 planning-sticky-col planning-sticky-body planning-child-cat border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+            <div class="flex items-center justify-between w-full pl-6">
+              <span class="truncate pr-2" title="${cat}">${cat}</span>
+              <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
+                <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
+                  <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
+                </button>
+                <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+                  <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
+                </button>
+              </div>
             </div>
           </td>
           ${cellsHtml}
@@ -4204,14 +4212,14 @@ $(document).ready(function() {
       tbodyHtml += masterHtml + childrenHtml;
     };
 
-    renderMacro('Fixas', 'row-fixas', 'bg-rose-50 dark:bg-rose-900/20 text-rose-800 dark:text-rose-300', 'bg-rose-50 dark:bg-rose-900/20', 'text-rose-600 dark:text-rose-400');
-    renderMacro('Variáveis Essenciais', 'row-essenciais', 'bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-300', 'bg-orange-50 dark:bg-orange-900/20', 'text-orange-600 dark:text-orange-400');
-    renderMacro('Discricionárias', 'row-discricionarias', 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300', 'bg-amber-50 dark:bg-amber-900/20', 'text-amber-600 dark:text-amber-400');
+    renderMacro('Fixas', 'row-fixas', 'bg-[#fff1f2] dark:bg-[#4c0519] text-rose-800 dark:text-rose-200', 'planning-fixas-master', 'text-rose-600 dark:text-rose-400');
+    renderMacro('Variáveis Essenciais', 'row-essenciais', 'bg-[#fff7ed] dark:bg-[#431407] text-orange-800 dark:text-orange-200', 'planning-essenciais-master', 'text-orange-600 dark:text-orange-400');
+    renderMacro('Discricionárias', 'row-discricionarias', 'bg-[#fffbeb] dark:bg-[#451a03] text-amber-800 dark:text-amber-200', 'planning-disc-master', 'text-amber-600 dark:text-amber-400');
 
     $('#planning-tbody').html(tbodyHtml);
 
     let tfootHtml = `<tr>
-      <td class="px-4 py-3 sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border-r border-gray-300 dark:border-gray-600">Saldo do Mês</td>`;
+      <td class="px-4 py-3 planning-sticky-col planning-sticky-footer planning-tf-saldo border-r border-gray-300 dark:border-gray-600">Saldo do Mês</td>`;
     let totalBalanceYear = 0;
     data.monthlyTotals.forEach(m => {
       totalBalanceYear += m.balance;

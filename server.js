@@ -10,8 +10,9 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.static(path.join(__dirname, 'gas-project')));
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
-app.get('/', (req, res) => {
+function renderIndex(req, res) {
   let html = fs.readFileSync(path.join(__dirname, 'gas-project', 'Index.html'), 'utf8');
   html = html.replace(/<\?\!= include\('(.*?)'\); \?>/g, (match, p1) => {
     let p1Name = p1.endsWith('.html') ? p1 : p1 + '.html';
@@ -22,7 +23,10 @@ app.get('/', (req, res) => {
     }
   });
   res.send(html);
-});
+}
+
+app.get('/', renderIndex);
+app.get('/index.html', renderIndex);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
