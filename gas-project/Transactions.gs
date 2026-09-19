@@ -359,10 +359,18 @@ function getPlanningData(year) {
   try { cats = getGlobalCategories(); } catch(e) {}
   const catMacroMap = {};
   cats.forEach(c => {
-    if (c.profile) {
-      if (c.profile.includes('Fixa')) catMacroMap[String(c.name).toLowerCase()] = 'Fixas';
-      else if (c.profile.includes('Variável')) catMacroMap[String(c.name).toLowerCase()] = 'Variáveis Essenciais';
-      else catMacroMap[String(c.name).toLowerCase()] = 'Discricionárias';
+    if (c.name && c.profile) {
+      const cLower = String(c.name).toLowerCase().trim();
+      const prof = String(c.profile).trim();
+      if (prof.includes('Receita')) {
+        catMacroMap[cLower] = 'Receitas';
+      } else if (prof.includes('Fixa')) {
+        catMacroMap[cLower] = 'Fixas';
+      } else if (prof.includes('Variável') || prof.includes('Essencia')) {
+        catMacroMap[cLower] = 'Variáveis Essenciais';
+      } else {
+        catMacroMap[cLower] = 'Discricionárias';
+      }
     }
   });
   
@@ -390,6 +398,23 @@ function getPlanningData(year) {
     'Discricionárias': {}
   };
   
+  // Pre-seed categories from global configuration so customized categories appear
+  cats.forEach(c => {
+    if (!c.name) return;
+    const cName = String(c.name).trim();
+    const cLower = cName.toLowerCase();
+    const macro = catMacroMap[cLower];
+    if (macro === 'Receitas') {
+      if (!incomeCategories[cName]) {
+        incomeCategories[cName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+      }
+    } else if (macro && expenseMacros[macro]) {
+      if (!expenseMacros[macro][cName]) {
+        expenseMacros[macro][cName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+      }
+    }
+  });
+
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const d = parseFlexDate(displayData[i][5]);
@@ -410,14 +435,26 @@ function getPlanningData(year) {
         txStatus = 'realized';
     }
 
-    if (tipo === 'Entrada') {
+    const catLower = categoria.toLowerCase();
+    const explicitMacro = catMacroMap[catLower];
+
+    let isIncome = false;
+    if (explicitMacro === 'Receitas') {
+      isIncome = true;
+    } else if (explicitMacro) {
+      isIncome = false;
+    } else {
+      isIncome = (tipo === 'Entrada');
+    }
+
+    if (isIncome) {
       if (!incomeCategories[categoria]) {
         incomeCategories[categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
       }
       incomeCategories[categoria][mIdx][txStatus] += valor;
       incomeCategories[categoria][mIdx].total += valor;
     } else {
-      let macro = getMacroCategory(categoria, desc, typeof catMacroMap !== "undefined" ? catMacroMap : null);
+      let macro = explicitMacro || getMacroCategory(categoria, desc, catMacroMap);
       if (!expenseMacros[macro]) macro = 'Discricionárias';
       if (!expenseMacros[macro][categoria]) {
         expenseMacros[macro][categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));

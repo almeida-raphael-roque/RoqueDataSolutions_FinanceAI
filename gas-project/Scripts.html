@@ -53,21 +53,74 @@ $(document).ready(function() {
   function deleteCategory(name) {
     if(!confirm("Tem certeza que deseja excluir a categoria '" + name + "'? Esta ação não afetará as transações já importadas, apenas as regras de planejamento e categorização futura.")) return;
     
+    // Remove locally from GLOBAL_CATEGORIES
+    if (typeof GLOBAL_CATEGORIES !== 'undefined') {
+      GLOBAL_CATEGORIES = GLOBAL_CATEGORIES.filter(c => c.name.toLowerCase() !== name.toLowerCase());
+      saveCategoriesToStorage();
+    }
+
     // Mostra indicador global de loading
     const oldHtml = $('#planning-tbody').html();
     $('#planning-tbody').html('<tr><td colspan="13" class="text-center py-10"><i class="fa-solid fa-circle-notch fa-spin text-primary text-3xl"></i></td></tr>');
     
-    google.script.run
-      .withSuccessHandler(function() {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function() {
+          invalidateCache();
+          if(typeof renderCategoriesList === 'function') renderCategoriesList();
+          loadPlanning();
+        })
+        .withFailureHandler(function(err) {
+          alert("Erro ao excluir categoria: " + err.message);
+          $('#planning-tbody').html(oldHtml);
+        })
+        .deleteCategory(name);
+    } else {
+      setTimeout(() => {
         invalidateCache();
         if(typeof renderCategoriesList === 'function') renderCategoriesList();
         loadPlanning();
-      })
-      .withFailureHandler(function(err) {
-        alert("Erro ao excluir categoria: " + err.message);
-        $('#planning-tbody').html(oldHtml);
-      })
-      .deleteCategory(name);
+      }, 300);
+    }
+  }
+
+  function editCategoryFromPlanning(name) {
+    if(!name) return;
+    let cat = (typeof GLOBAL_CATEGORIES !== 'undefined') ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === name.toLowerCase()) : null;
+    
+    if (!cat) {
+      let inferredProfile = 'Despesa Discricionária';
+      if (typeof planningDataCache !== 'undefined' && planningDataCache) {
+        if (planningDataCache.incomeCategories && planningDataCache.incomeCategories[name]) {
+          inferredProfile = 'Receita Fixa';
+        } else if (planningDataCache.expenseMacros) {
+          if (planningDataCache.expenseMacros['Fixas'] && planningDataCache.expenseMacros['Fixas'][name]) {
+            inferredProfile = 'Despesa Fixa';
+          } else if (planningDataCache.expenseMacros['Variáveis Essenciais'] && planningDataCache.expenseMacros['Variáveis Essenciais'][name]) {
+            inferredProfile = 'Despesa Variável';
+          } else if (planningDataCache.expenseMacros['Discricionárias'] && planningDataCache.expenseMacros['Discricionárias'][name]) {
+            inferredProfile = 'Despesa Discricionária';
+          }
+        }
+      }
+      cat = {
+        id: Date.now(),
+        name: name,
+        profile: inferredProfile
+      };
+      if (typeof GLOBAL_CATEGORIES !== 'undefined') {
+        GLOBAL_CATEGORIES.push(cat);
+        saveCategoriesToStorage();
+      }
+    }
+    
+    $('#category-modal-id').val(cat.id);
+    $('#cat-name').val(cat.name);
+    $('#cat-profile').val(cat.profile || 'Despesa Discricionária');
+    $('#category-modal-title').html('<i class="fa-solid fa-pen-to-square text-primary text-base"></i><span>Editar Categoria</span>');
+    $('#btn-delete-category-modal').removeClass('hidden');
+    $('#category-modal').removeClass('hidden');
+    setTimeout(() => $('#cat-name').focus(), 100);
   }
 
 
@@ -118,21 +171,33 @@ function openAddCategoryModal(macroProfile) {
     const origText = $(btn).html();
     $(btn).html('<i class="fa-solid fa-circle-notch fa-spin"></i>').prop('disabled', true);
     
-    google.script.run
-      .withSuccessHandler(function() {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function() {
+          $(btn).html(origText).prop('disabled', false);
+          $('#modal-add-category').addClass('hidden');
+          alert("Categoria adicionada com sucesso!");
+          
+          invalidateCache();
+          if(typeof renderCategoriesList === 'function') renderCategoriesList();
+          loadPlanning();
+        })
+        .withFailureHandler(function(err) {
+          $(btn).html(origText).prop('disabled', false);
+          alert("Erro ao adicionar categoria: " + err.message);
+        })
+        .addCategory(name, profile);
+    } else {
+      setTimeout(() => {
+        GLOBAL_CATEGORIES.push({ id: Date.now(), name: name, profile: profile });
+        saveCategoriesToStorage();
         $(btn).html(origText).prop('disabled', false);
         $('#modal-add-category').addClass('hidden');
-        alert("Categoria adicionada com sucesso!");
-        
         invalidateCache();
         if(typeof renderCategoriesList === 'function') renderCategoriesList();
         loadPlanning();
-      })
-      .withFailureHandler(function(err) {
-        $(btn).html(origText).prop('disabled', false);
-        alert("Erro ao adicionar categoria: " + err.message);
-      })
-      .addCategory(name, profile);
+      }, 300);
+    }
   }
 
 </script>
@@ -152,21 +217,26 @@ function openAddCategoryModal(macroProfile) {
     { data: "2026-05-10", valor: 45.90, tipo: "Saída", descricao: "IFD*BURGER KING", categoria: "", origem: "Cartão Nubank" },
     { data: "2026-05-08", valor: 28.50, tipo: "Saída", descricao: "UBER* TRIP", categoria: "", origem: "Cartão Nubank" },
     { data: "2026-05-05", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário", origem: "Conta Itaú" },
+    { data: "2026-05-05", valor: 3500.00, tipo: "Entrada", descricao: "EDILSON - Consultoria", categoria: "EDILSON", origem: "Conta Itaú" },
     { data: "2026-04-18", valor: 350.00, tipo: "Saída", descricao: "CDB LIMITE GARANTIDO", categoria: "", origem: "Conta Nubank" },
     { data: "2026-04-15", valor: 1200.00, tipo: "Saída", descricao: "Aluguel", categoria: "Moradia", origem: "Conta Itaú" },
     { data: "2026-04-05", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário" },
+    { data: "2026-04-05", valor: 3500.00, tipo: "Entrada", descricao: "EDILSON - Consultoria", categoria: "EDILSON", origem: "Conta Itaú" },
     { data: "2026-03-22", valor: 200.00, tipo: "Saída", descricao: "CDB LIMITE GARANTIDO", categoria: "", origem: "Conta Nubank" },
     { data: "2026-03-10", valor: 400.00, tipo: "Saída", descricao: "Restaurante McDonald's", categoria: "Alimentação" },
     { data: "2026-03-05", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário" },
+    { data: "2026-03-05", valor: 3500.00, tipo: "Entrada", descricao: "EDILSON - Consultoria", categoria: "EDILSON", origem: "Conta Itaú" },
     { data: "2026-02-15", valor: 300.00, tipo: "Saída", descricao: "Farmácia", categoria: "Saúde" },
     { data: "2026-02-10", valor: 150.00, tipo: "Saída", descricao: "Restaurante McDonald's", categoria: "Alimentação" },
     { data: "2026-02-05", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário" },
+    { data: "2026-02-05", valor: 3500.00, tipo: "Entrada", descricao: "EDILSON - Consultoria", categoria: "EDILSON", origem: "Conta Itaú" },
     { data: "2026-01-22", valor: 100.00, tipo: "Saída", descricao: "Cinema", categoria: "Lazer" },
     { data: "2026-01-20", valor: 250.00, tipo: "Saída", descricao: "Uber", categoria: "Transporte" },
     { data: "2026-01-15", valor: 1200.00, tipo: "Saída", descricao: "Aluguel", categoria: "Moradia" },
     { data: "2026-01-12", valor: 120.00, tipo: "Saída", descricao: "Restaurante McDonald's", categoria: "Alimentação" },
     { data: "2026-01-10", valor: 500.00, tipo: "Saída", descricao: "Mercado Livre", categoria: "Alimentação" },
-    { data: "2026-01-05", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário" }
+    { data: "2026-01-05", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário" },
+    { data: "2026-01-05", valor: 3500.00, tipo: "Entrada", descricao: "EDILSON - Consultoria", categoria: "EDILSON", origem: "Conta Itaú" }
   ];
 
   let GLOBAL_MOCK_BACKUP = null;
@@ -180,7 +250,8 @@ function openAddCategoryModal(macroProfile) {
     { id: 6, name: "Viagem", profile: "Despesa Discricionária" },
     { id: 7, name: "Salário", profile: "Receita Fixa" },
     { id: 8, name: "Transferência", profile: "Transferência" },
-    { id: 9, name: "Outros", profile: "Despesa Discricionária" }
+    { id: 9, name: "Outros", profile: "Despesa Discricionária" },
+    { id: 10, name: "EDILSON", profile: "Receita Fixa" }
   ];
 
   // Persistent categories across sessions
@@ -2629,16 +2700,41 @@ function openAddCategoryModal(macroProfile) {
 
       if(!name) return alert('O nome é obrigatório');
 
+      let oldName = '';
       if(id) {
         const cat = GLOBAL_CATEGORIES.find(c => c.id == id);
-        if(cat) { cat.name = name; cat.profile = profile; }
+        if(cat) { 
+          oldName = cat.name;
+          cat.name = name; 
+          cat.profile = profile; 
+        } else {
+          GLOBAL_CATEGORIES.push({ id: id, name: name, profile: profile });
+        }
       } else {
-        GLOBAL_CATEGORIES.push({
-          id: Date.now(),
-          name: name,
-          profile: profile
-        });
+        const existing = GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === name.toLowerCase());
+        if (existing) {
+          oldName = existing.name;
+          existing.profile = profile;
+        } else {
+          GLOBAL_CATEGORIES.push({
+            id: Date.now(),
+            name: name,
+            profile: profile
+          });
+        }
       }
+
+      // If category renamed, sync transactions
+      if (oldName && oldName.toLowerCase() !== name.toLowerCase()) {
+        if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') {
+          GLOBAL_MOCK_TRANSACTIONS.forEach(t => {
+            if (t.categoria && t.categoria.toLowerCase() === oldName.toLowerCase()) {
+              t.categoria = name;
+            }
+          });
+        }
+      }
+
       saveCategoriesToStorage();
       $('#category-modal').addClass('hidden');
       renderCategoriesList();
@@ -2649,6 +2745,12 @@ function openAddCategoryModal(macroProfile) {
       if (typeof populateTransactionCategorySelect === 'function') {
         populateTransactionCategorySelect(name);
       }
+
+      // Invalidate and reload planning matrix immediately so moved categories reflect
+      invalidateCache();
+      if (typeof loadPlanning === 'function') {
+        loadPlanning();
+      }
     });
 
     $(document).on('click', '.btn-edit-category', function() {
@@ -2658,10 +2760,25 @@ function openAddCategoryModal(macroProfile) {
         $('#category-modal-id').val(cat.id);
         $('#cat-name').val(cat.name);
         $('#cat-profile').val(cat.profile);
-        $('#category-modal-title').text('Editar Categoria');
+        $('#category-modal-title').html('<i class="fa-solid fa-pen-to-square text-primary text-base"></i><span>Editar Categoria</span>');
         $('#btn-delete-category-modal').removeClass('hidden');
         $('#category-modal').removeClass('hidden');
+        setTimeout(() => $('#cat-name').focus(), 100);
       }
+    });
+
+    // Planning Matrix specific category edit button
+    $(document).on('click', '.btn-edit-planning-cat', function(e) {
+      e.stopPropagation();
+      const catName = decodeURIComponent($(this).data('cat'));
+      editCategoryFromPlanning(catName);
+    });
+
+    // Planning Matrix specific category delete button
+    $(document).on('click', '.btn-delete-planning-cat', function(e) {
+      e.stopPropagation();
+      const catName = decodeURIComponent($(this).data('cat'));
+      deleteCategory(catName);
     });
 
     // Delete category from within the Edit Category modal (requested)
@@ -2679,6 +2796,10 @@ function openAddCategoryModal(macroProfile) {
         populateRuleCategorySelect();
         if (typeof updateCategoryFilterDropdown === 'function') {
           updateCategoryFilterDropdown();
+        }
+        invalidateCache();
+        if (typeof loadPlanning === 'function') {
+          loadPlanning();
         }
       }
     });
@@ -3976,10 +4097,15 @@ $(document).ready(function() {
       recYearTotal += catYearTotal;
       recChildren += `<tr class="row-receitas hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
         <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
-          <span>${cat}</span>
-          <button type="button" onclick="deleteCategory('${cat}')" class="opacity-0 group-hover:opacity-100 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded w-5 h-5 flex items-center justify-center transition-all" title="Excluir Categoria">
-            <i class="fa-solid fa-minus text-[10px]"></i>
-          </button>
+          <span class="truncate pr-2" title="${cat}">${cat}</span>
+          <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
+            <button type="button" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
+              <i class="fa-solid fa-pen text-[10px]"></i>
+            </button>
+            <button type="button" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+              <i class="fa-solid fa-minus text-[10px]"></i>
+            </button>
+          </div>
         </td>
         ${cellsHtml}
         <td class="px-4 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 border-l border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30">${formatCurrency(catYearTotal)}</td>
@@ -4018,10 +4144,15 @@ $(document).ready(function() {
         yearTotal += catYearTotal;
         childrenHtml += `<tr class="${rowClass} hidden bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors group">
           <td class="px-4 py-2 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-750 border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 pl-8 flex justify-between items-center">
-            <span>${cat}</span>
-            <button type="button" onclick="deleteCategory('${cat}')" class="opacity-0 group-hover:opacity-100 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded w-5 h-5 flex items-center justify-center transition-all" title="Excluir Categoria">
-              <i class="fa-solid fa-minus text-[10px]"></i>
-            </button>
+            <span class="truncate pr-2" title="${cat}">${cat}</span>
+            <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
+              <button type="button" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
+                <i class="fa-solid fa-pen text-[10px]"></i>
+              </button>
+              <button type="button" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+                <i class="fa-solid fa-minus text-[10px]"></i>
+              </button>
+            </div>
           </td>
           ${cellsHtml}
           <td class="px-4 py-2 text-right font-semibold ${textClassTotal} border-l border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30">${formatCurrency(catYearTotal)}</td>
@@ -4104,8 +4235,8 @@ $(document).ready(function() {
     } else {
       setTimeout(() => {
         $('#planning-drawer-loading').addClass('hidden');
-        renderDrawerTransactions([], cat, month, year, tipo);
-      }, 500);
+        renderDrawerTransactions((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' ? GLOBAL_MOCK_TRANSACTIONS : []), cat, month, year, tipo);
+      }, 300);
     }
   });
 
@@ -4152,20 +4283,121 @@ $(document).ready(function() {
   });
 
   function generateMockPlanningData(year) {
+    const currentMonthNum = new Date().getMonth() + 1;
+    const monthsMeta = Array.from({length: 12}, (_, i) => ({
+      month: i + 1,
+      status: (i + 1 < currentMonthNum) ? 'realized' : (i + 1 === currentMonthNum) ? 'current' : 'planned',
+      name: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][i]
+    }));
+
+    const incomeCategories = {};
+    const expenseMacros = {
+      'Fixas': {},
+      'Variáveis Essenciais': {},
+      'Discricionárias': {}
+    };
+
+    // Pre-seed all categories from GLOBAL_CATEGORIES
+    const cats = (typeof GLOBAL_CATEGORIES !== 'undefined') ? GLOBAL_CATEGORIES : [];
+    cats.forEach(c => {
+      const p = (c.profile || '').toLowerCase();
+      if (p.includes('transferência') || p.includes('transferencia')) return;
+
+      const emptyMonths = () => Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+
+      if (p.includes('receita')) {
+        incomeCategories[c.name] = emptyMonths();
+      } else if (p.includes('fixa')) {
+        expenseMacros['Fixas'][c.name] = emptyMonths();
+      } else if (p.includes('variável') || p.includes('variavel') || p.includes('essencial')) {
+        expenseMacros['Variáveis Essenciais'][c.name] = emptyMonths();
+      } else {
+        expenseMacros['Discricionárias'][c.name] = emptyMonths();
+      }
+    });
+
+    // Populate with amounts from GLOBAL_MOCK_TRANSACTIONS
+    const txs = (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : [];
+    txs.forEach(t => {
+      if (!t.categoria || !t.data) return;
+      const d = parseLocalDateString(t.data);
+      if (d.getFullYear() !== year) return;
+      const mIdx = d.getMonth();
+      const val = Math.abs(parseFloat(t.valor) || 0);
+
+      if (t.tipo === 'Entrada') {
+        if (!incomeCategories[t.categoria]) {
+          incomeCategories[t.categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+        }
+        incomeCategories[t.categoria][mIdx].realized += val;
+        incomeCategories[t.categoria][mIdx].total += val;
+      } else if (t.tipo === 'Saída') {
+        let found = false;
+        for (const macro of ['Fixas', 'Variáveis Essenciais', 'Discricionárias']) {
+          if (expenseMacros[macro] && expenseMacros[macro][t.categoria]) {
+            expenseMacros[macro][t.categoria][mIdx].realized += val;
+            expenseMacros[macro][t.categoria][mIdx].total += val;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          if (!expenseMacros['Discricionárias'][t.categoria]) {
+            expenseMacros['Discricionárias'][t.categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+          }
+          expenseMacros['Discricionárias'][t.categoria][mIdx].realized += val;
+          expenseMacros['Discricionárias'][t.categoria][mIdx].total += val;
+        }
+      }
+    });
+
+    const monthlyTotals = Array.from({length: 12}, (_, i) => {
+      let inc = 0;
+      let exp = 0;
+      Object.keys(incomeCategories).forEach(cat => {
+        inc += incomeCategories[cat][i].total;
+      });
+      ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+        Object.keys(expenseMacros[macro]).forEach(cat => {
+          exp += expenseMacros[macro][cat][i].total;
+        });
+      });
+      return {
+        income: inc,
+        expense: exp,
+        balance: inc - exp
+      };
+    });
+
+    let incReal = 0, incPlan = 0, expReal = 0, expPlan = 0;
+    monthlyTotals.forEach((m, idx) => {
+      if (idx + 1 <= currentMonthNum) {
+        incReal += m.income;
+        expReal += m.expense;
+      } else {
+        incPlan += m.income;
+        expPlan += m.expense;
+      }
+    });
+
+    const currentBalance = incReal - expReal;
+    const projectedBalance = (incReal + incPlan) - (expReal + expPlan);
+
     return {
       year: year,
-      currentMonthNum: new Date().getMonth() + 1,
-      monthsMeta: Array.from({length:12}, (_, i) => ({month: i+1, status: i < new Date().getMonth() ? 'realized' : i === new Date().getMonth() ? 'current' : 'planned', name: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][i]})),
-      incomeCategories: {
-        'Salário': Array.from({length:12}, () => ({realized:5000, planned:0, total:5000}))
-      },
-      expenseMacros: { 
-        'Fixas': { 'Moradia': Array.from({length:12}, () => ({realized:1500, planned:0, total:1500})) }, 
-        'Variáveis Essenciais': { 'Supermercado': Array.from({length:12}, () => ({realized:800, planned:0, total:800})) }, 
-        'Discricionárias': { 'Lazer': Array.from({length:12}, () => ({realized:400, planned:0, total:400})) } 
-      },
-      monthlyTotals: Array.from({length:12}, () => ({income:5000, expense:2700, balance:2300})),
-      summary: { incomeRealized:0, incomePlanned:60000, expenseRealized:0, expensePlanned:32400, currentBalance:2300, projectedBalance:27600 }
+      currentMonthNum: currentMonthNum,
+      monthsMeta: monthsMeta,
+      incomeCategories: incomeCategories,
+      expenseMacros: expenseMacros,
+      monthlyTotals: monthlyTotals,
+      summary: {
+        incomeRealized: incReal,
+        incomePlanned: incPlan,
+        expenseRealized: expReal,
+        expensePlanned: expPlan,
+        currentBalance: currentBalance,
+        projectedBalance: projectedBalance
+      }
     };
   }
 

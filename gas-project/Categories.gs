@@ -98,6 +98,22 @@ function addCategory(name, profile) {
   return true;
 }
 
+function updateCategory(id, name, profile) {
+  const sheet = getCategoriesSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) == String(id) || String(data[i][1]).trim().toLowerCase() === String(name).trim().toLowerCase()) {
+      sheet.getRange(i + 1, 2).setValue(name);
+      sheet.getRange(i + 1, 3).setValue(profile);
+      SpreadsheetApp.flush();
+      return true;
+    }
+  }
+  sheet.appendRow([id || Date.now(), name, profile]);
+  SpreadsheetApp.flush();
+  return true;
+}
+
 function deleteCategory(name) {
   const sheet = getCategoriesSheet();
   const data = sheet.getDataRange().getValues();

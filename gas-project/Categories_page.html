@@ -54,38 +54,49 @@
   </div>
 
   <!-- Category Modal -->
-  <div id="category-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
-      <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-        <h3 class="text-xl font-bold text-gray-800" id="category-modal-title">Nova Categoria</h3>
-        <button type="button" class="btn-close-cat-modal text-gray-400 hover:text-gray-600 transition-colors">
+  <div id="category-modal" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col border border-gray-100 dark:border-slate-700 animate-scale-in">
+      <div class="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/50">
+        <h3 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2" id="category-modal-title">
+          <i class="fa-solid fa-pen-to-square text-primary text-base"></i>
+          <span>Nova Categoria</span>
+        </h3>
+        <button type="button" class="btn-close-cat-modal text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
           <i class="fa-solid fa-xmark text-xl"></i>
         </button>
       </div>
       <div class="p-6 space-y-4">
         <input type="hidden" id="category-modal-id">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Nome da Categoria</label>
-          <input type="text" id="cat-name" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-primary focus:border-primary" placeholder="Ex: Alimentação">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome da Categoria</label>
+          <input type="text" id="cat-name" class="w-full border border-gray-300 dark:border-slate-600 rounded-lg p-2.5 focus:ring-primary focus:border-primary bg-white dark:bg-slate-700 text-gray-900 dark:text-white" placeholder="Ex: Alimentação">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Perfil de Despesa/Receita</label>
-          <select id="cat-profile" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-primary focus:border-primary">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Macro / Perfil</label>
+          <select id="cat-profile" class="w-full border border-gray-300 dark:border-slate-600 rounded-lg p-2.5 focus:ring-primary focus:border-primary bg-white dark:bg-slate-700 text-gray-900 dark:text-white">
              <option value="Despesa Fixa">Despesa Fixa</option>
-             <option value="Despesa Variável">Despesa Variável</option>
+             <option value="Despesa Variável">Despesa Variável (Essencial)</option>
              <option value="Despesa Discricionária">Despesa Discricionária</option>
              <option value="Receita Fixa">Receita Fixa</option>
+             <option value="Receita Variável">Receita Variável</option>
              <option value="Transferência">Transferência</option>
           </select>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-circle-info text-primary text-[11px]"></i>
+            <span>Define em qual grupo da Matriz de Planejamento a categoria será exibida.</span>
+          </p>
         </div>
       </div>
-      <div class="p-6 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-        <button type="button" id="btn-delete-category-modal" class="hidden px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-medium transition-colors flex items-center text-sm border border-red-200">
+      <div class="p-6 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-800/50">
+        <button type="button" id="btn-delete-category-modal" class="hidden px-4 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/30 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-lg font-medium transition-colors flex items-center text-sm border border-rose-200 dark:border-rose-800">
           <i class="fa-solid fa-trash-can mr-2"></i>Excluir Categoria
         </button>
         <div class="flex items-center space-x-3 ml-auto">
-          <button type="button" class="btn-close-cat-modal px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium transition-colors text-sm">Cancelar</button>
-          <button type="button" id="btn-save-category" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors text-sm">Salvar</button>
+          <button type="button" class="btn-close-cat-modal px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors text-sm">Cancelar</button>
+          <button type="button" id="btn-save-category" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors text-sm flex items-center gap-2">
+            <i class="fa-solid fa-check"></i>
+            <span>Salvar</span>
+          </button>
         </div>
       </div>
     </div>
