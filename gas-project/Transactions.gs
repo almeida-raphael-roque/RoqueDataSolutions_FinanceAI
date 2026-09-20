@@ -499,6 +499,36 @@ function getPlanningData(year) {
   summary.currentBalance = summary.incomeRealized - summary.expenseRealized;
   summary.projectedBalance = (summary.incomeRealized + summary.incomePlanned) - (summary.expenseRealized + summary.expensePlanned);
 
+  // Merge server-side planning manual overrides if any
+  try {
+    const overrides = getPlanningOverridesBackend();
+    const yStr = String(targetYear);
+    if (overrides && overrides[yStr]) {
+      const yearOv = overrides[yStr];
+      Object.keys(yearOv).forEach(cat => {
+        for (let m = 1; m <= 12; m++) {
+          if (yearOv[cat] && yearOv[cat][m] !== undefined) {
+            const ov = yearOv[cat][m];
+            if (incomeCategories[cat]) {
+              incomeCategories[cat][m - 1].total = ov.val;
+              incomeCategories[cat][m - 1].isManualOverride = true;
+            } else {
+              for (const macro of ['Fixas', 'Variáveis Essenciais', 'Discricionárias']) {
+                if (expenseMacros[macro] && expenseMacros[macro][cat]) {
+                  expenseMacros[macro][cat][m - 1].total = ov.val;
+                  expenseMacros[macro][cat][m - 1].isManualOverride = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Error applying server overrides', e);
+  }
+
   return {
     year: targetYear,
     currentMonthNum: currentMonthNum,
@@ -508,6 +538,39 @@ function getPlanningData(year) {
     monthlyTotals: monthlyTotals,
     summary: summary
   };
+}
+
+function savePlanningOverrideBackend(year, cat, month, tipo, val) {
+  try {
+    const userProp = PropertiesService.getUserProperties();
+    let overrides = {};
+    const raw = userProp.getProperty('PLANNING_MANUAL_OVERRIDES');
+    if (raw) {
+      try { overrides = JSON.parse(raw); } catch(e) {}
+    }
+    const yStr = String(year);
+    if (!overrides[yStr]) overrides[yStr] = {};
+    if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
+    overrides[yStr][cat][month] = {
+      val: val,
+      tipo: tipo,
+      updatedAt: new Date().getTime()
+    };
+    userProp.setProperty('PLANNING_MANUAL_OVERRIDES', JSON.stringify(overrides));
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function getPlanningOverridesBackend() {
+  try {
+    const userProp = PropertiesService.getUserProperties();
+    const raw = userProp.getProperty('PLANNING_MANUAL_OVERRIDES');
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) {
+    return {};
+  }
 }
 
 function getTransactionsForCategorization() {
