@@ -5135,15 +5135,35 @@ $(document).ready(function() {
         const hasHighRecurrence = hasMajorityRolling12 || hasMajorityThisYear || hasMajorityPrevYear;
 
         if (hasHighRecurrence) {
-          let recordedVals = recordedMonthsThisYear.map(m => amounts[m]).filter(v => v > 0);
-          if (recordedVals.length === 0) {
-            recordedVals = recordedMonthsPrevYear.map(m => prevAmounts[m]).filter(v => v > 0);
+          // Horizonte de no máximo 12 meses para trás a partir do mês vigente:
+          // 1) Meses do ano corrente até o mês vigente (1 a currentMonthNum)
+          // 2) Meses do ano anterior para completar os 12 meses (currentMonthNum + 1 a 12)
+          const horizonValues = [];
+
+          for (let m = 1; m <= currentMonthNum; m++) {
+            if (amounts[m] && amounts[m] > 0) {
+              horizonValues.push(amounts[m]);
+            }
           }
 
-          if (recordedVals.length > 0) {
+          for (let m = currentMonthNum + 1; m <= 12; m++) {
+            if (prevAmounts[m] && prevAmounts[m] > 0) {
+              horizonValues.push(prevAmounts[m]);
+            }
+          }
+
+          let valsToAverage = horizonValues;
+          if (valsToAverage.length === 0) {
+            valsToAverage = recordedMonthsThisYear.map(m => amounts[m]).filter(v => v > 0);
+            if (valsToAverage.length === 0) {
+              valsToAverage = recordedMonthsPrevYear.map(m => prevAmounts[m]).filter(v => v > 0);
+            }
+          }
+
+          if (valsToAverage.length > 0) {
             isEligible = true;
-            const sum = recordedVals.reduce((acc, v) => acc + v, 0);
-            forecastValue = Math.round((sum / recordedVals.length) * 100) / 100;
+            const sum = valsToAverage.reduce((acc, v) => acc + v, 0);
+            forecastValue = Math.round((sum / valsToAverage.length) * 100) / 100;
           }
         }
       }
