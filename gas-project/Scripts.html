@@ -4660,12 +4660,9 @@ $(document).ready(function() {
     currentPlanningYear = getActivePlanningYear();
 
     const processAndRender = (data) => {
-      // Se ainda não existirem previsões geradas para o ano alvo, calcula automaticamente
-      const currentFc = getPlanningForecasts();
-      if (!currentFc[String(currentPlanningYear)] || Object.keys(currentFc[String(currentPlanningYear)]).length === 0) {
-        if (typeof calculatePlanningForecastsData === 'function') {
-          calculatePlanningForecastsData(currentPlanningYear);
-        }
+      // Sempre recalcula as previsões automáticas baseando-se nos dados reais recebidos da planilha/mock
+      if (typeof calculatePlanningForecastsData === 'function') {
+        calculatePlanningForecastsData(currentPlanningYear, data);
       }
       applyPlanningOverrides(data);
       planningDataCache = data;
@@ -4713,8 +4710,7 @@ $(document).ready(function() {
   function isPlanningMonthForecast(year, monthNum) {
     const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1; // 1 a 12
-    const currentDay = now.getDate(); // 1 a 31
+    const currentMonth = now.getMonth() + 1; // 1 a 12 (Setembro = 9)
 
     const y = parseInt(year, 10);
     const m = parseInt(monthNum, 10);
@@ -4722,15 +4718,9 @@ $(document).ready(function() {
     if (y > currentYear) return true;
     if (y < currentYear) return false;
 
-    // Meses pra frente: sempre previsto (itálico)
-    if (m > currentMonth) return true;
-    // Meses anteriores: sempre normal
-    if (m < currentMonth) return false;
-
-    // Mês atual: limiar é o dia 10
-    // "se hoje é dia 9 de outubro e escrevo algo em outubro ele fica em itálico pois ainda não é dia 10 (mesma coisa acontece se for dia 10) (então até o dia 10 do mês de outubro, mesmo que estamos ainda em outubro, é previsto roxinho)"
-    // "se hoje é dia 11 e eu escrevo em outubro então nesse caso já fica normal a letra"
-    return currentDay <= 10;
+    // No ano atual: o mês atual (Setembro) e todos os meses futuros são considerados de previsão!
+    // Sem corte no dia 10: enquanto o mês não tiver transações consolidadas, é projetado.
+    return m >= currentMonth;
   }
 
   function getPlanningOverrides() {
@@ -4798,14 +4788,17 @@ $(document).ready(function() {
     }
   }
 
-  function calculatePlanningForecastsData(targetYear) {
+  function calculatePlanningForecastsData(targetYear, planningData) {
     targetYear = parseInt(targetYear, 10) || currentPlanningYear;
 
     const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
     const currentYear = now.getFullYear();
     const currentMonthNum = (targetYear < currentYear) ? 12 : ((targetYear > currentYear) ? 1 : (now.getMonth() + 1));
 
-    // 1. Obter todas as transações com categoria atualizada
+    // 1. Obter dados da matriz de planejamento (planningData ou cache)
+    const pData = planningData || planningDataCache;
+
+    // Obter todas as transações com categoria atualizada (caso existam em memória)
     let allTxs = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
       ? currentLoadedTransactions
       : ((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : []);
@@ -4813,74 +4806,79 @@ $(document).ready(function() {
       allTxs = applyCategoryOverrides(allTxs);
     }
 
-    // Transações do ano alvo e do ano anterior (caso necessário para histórico e crivo)
-    const yearTxs = allTxs.filter(t => {
-      if (!t.data) return false;
-      const d = parseLocalDateString(t.data);
-      return d && d.getFullYear() === targetYear;
-    });
+    const catMonthlyAmounts = {};
+    const catPrevMonthlyAmounts = {};
+    const catTipoMap = {};
 
-    const prevYearTxs = allTxs.filter(t => {
-      if (!t.data) return false;
-      const d = parseLocalDateString(t.data);
-      return d && d.getFullYear() === (targetYear - 1);
-    });
+    // 1A. Extrair valores realizados diretamente da matriz pData (fonte primária dos números exibidos na tela)
+    if (pData && pData.year === targetYear) {
+      if (pData.incomeCategories) {
+        Object.keys(pData.incomeCategories).forEach(cat => {
+          const arr = pData.incomeCategories[cat];
+          if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
+          catTipoMap[cat] = 'Entrada';
+          if (Array.isArray(arr)) {
+            arr.forEach((cell, idx) => {
+              const m = idx + 1;
+              const realVal = (cell.realized && cell.realized > 0)
+                ? cell.realized
+                : ((cell.total > 0 && !cell.isForecast && !cell.isManualOverride) ? cell.total : 0);
+              if (realVal > 0) {
+                catMonthlyAmounts[cat][m] = realVal;
+              }
+            });
+          }
+        });
+      }
 
-    // 2. Meses com registros no ano alvo (meses <= currentMonthNum que possuem registros reais)
-    const recordedMonthSet = new Set();
-    yearTxs.forEach(t => {
+      if (pData.expenseMacros) {
+        ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+          if (pData.expenseMacros[macro]) {
+            Object.keys(pData.expenseMacros[macro]).forEach(cat => {
+              const arr = pData.expenseMacros[macro][cat];
+              if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
+              catTipoMap[cat] = 'Saída';
+              if (Array.isArray(arr)) {
+                arr.forEach((cell, idx) => {
+                  const m = idx + 1;
+                  const realVal = (cell.realized && cell.realized > 0)
+                    ? cell.realized
+                    : ((cell.total > 0 && !cell.isForecast && !cell.isManualOverride) ? cell.total : 0);
+                  if (realVal > 0) {
+                    catMonthlyAmounts[cat][m] = realVal;
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+    }
+
+    // 1B. Complementar ou consolidar com transações brutas de allTxs
+    allTxs.forEach(t => {
+      if (!t.categoria || !t.data) return;
       const d = parseLocalDateString(t.data);
-      if (d) {
-        const m = d.getMonth() + 1;
-        if (targetYear < currentYear || m <= currentMonthNum) {
-          recordedMonthSet.add(m);
+      if (!d) return;
+      const cat = String(t.categoria).trim();
+      const val = Math.abs(parseFloat(t.valor) || 0);
+      const m = d.getMonth() + 1;
+      const y = d.getFullYear();
+
+      if (y === targetYear) {
+        if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
+        if (!catMonthlyAmounts[cat][m]) {
+          catMonthlyAmounts[cat][m] = (catMonthlyAmounts[cat][m] || 0) + val;
         }
+        if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
+      } else if (y === (targetYear - 1)) {
+        if (!catPrevMonthlyAmounts[cat]) catPrevMonthlyAmounts[cat] = {};
+        catPrevMonthlyAmounts[cat][m] = (catPrevMonthlyAmounts[cat][m] || 0) + val;
+        if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
       }
     });
-    const recordedMonths = Array.from(recordedMonthSet).sort((a, b) => a - b);
-    const N = recordedMonths.length;
 
-    // Meses com registros no ano anterior
-    const prevYearRecordedMonthSet = new Set();
-    prevYearTxs.forEach(t => {
-      const d = parseLocalDateString(t.data);
-      if (d) prevYearRecordedMonthSet.add(d.getMonth() + 1);
-    });
-    const prevYearRecordedMonths = Array.from(prevYearRecordedMonthSet).sort((a, b) => a - b);
-    const N_prev = prevYearRecordedMonths.length;
-
-    // 3. Agrupar valores por Categoria e Mês no ano alvo
-    const catMonthlyAmounts = {};
-    const catTipoMap = {};
-    yearTxs.forEach(t => {
-      if (!t.categoria) return;
-      const cat = String(t.categoria).trim();
-      const d = parseLocalDateString(t.data);
-      if (!d) return;
-      const m = d.getMonth() + 1;
-      const val = Math.abs(parseFloat(t.valor) || 0);
-
-      if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
-      catMonthlyAmounts[cat][m] = (catMonthlyAmounts[cat][m] || 0) + val;
-      if (t.tipo) catTipoMap[cat] = t.tipo;
-    });
-
-    // Agrupar valores no ano anterior
-    const catPrevMonthlyAmounts = {};
-    prevYearTxs.forEach(t => {
-      if (!t.categoria) return;
-      const cat = String(t.categoria).trim();
-      const d = parseLocalDateString(t.data);
-      if (!d) return;
-      const m = d.getMonth() + 1;
-      const val = Math.abs(parseFloat(t.valor) || 0);
-
-      if (!catPrevMonthlyAmounts[cat]) catPrevMonthlyAmounts[cat] = {};
-      catPrevMonthlyAmounts[cat][m] = (catPrevMonthlyAmounts[cat][m] || 0) + val;
-      if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
-    });
-
-    // Unir nomes de categorias
+    // Unir todas as categorias conhecidas
     const allCategoryNames = new Set([
       ...Object.keys(catMonthlyAmounts),
       ...Object.keys(catPrevMonthlyAmounts)
@@ -4914,10 +4912,9 @@ $(document).ready(function() {
 
       if (isFixedOrIncome) {
         // REGRA 1: RECEITAS E DESPESAS FIXAS
-        // Sempre replica o último registro para TODOS os meses que não têm registro do porvir (incluindo o mês atual, se ainda não tiver registro)
+        // Replica sempre o último registro para todos os meses do porvir (incluindo mês atual se não tiver registro)
         let lastVal = 0;
         let foundLast = false;
-        // Busca do mês atual para trás no ano alvo
         for (let m = currentMonthNum; m >= 1; m--) {
           if (amounts[m] && amounts[m] > 0) {
             lastVal = amounts[m];
@@ -4925,7 +4922,6 @@ $(document).ready(function() {
             break;
           }
         }
-        // Se não encontrou no ano alvo, busca de trás para frente no ano anterior
         if (!foundLast) {
           for (let m = 12; m >= 1; m--) {
             if (prevAmounts[m] && prevAmounts[m] > 0) {
@@ -4939,49 +4935,28 @@ $(document).ready(function() {
         if (lastVal > 0) {
           isEligible = true;
           forecastValue = lastVal;
-        } else {
-          isEligible = false;
         }
       } else {
         // REGRA 2: OUTRAS 2 MACROCATEGORIAS (VARIÁVEIS ESSENCIAIS E DISCRICIONÁRIAS)
-        // Crivo: se tem a maioria dos meses com registro (pode basear em registros do ano anterior também caso tenha) -> crivo diminuído
-        // Cálculo: média sempre dos meses com registro
-        const activeMonthsThisYear = recordedMonths.filter(m => (amounts[m] || 0) > 0);
-        const countThisYear = activeMonthsThisYear.length;
+        // Média de todos os meses com registro na categoria!
+        // "olha na imagem, você deveria ter feito a média da quantidade de meses com registro na categoria e determinado como previsão para os meses subsequentes!"
+        const recordedMonthsThisYear = Object.keys(amounts)
+          .map(Number)
+          .filter(m => (amounts[m] || 0) > 0 && (targetYear < currentYear || m <= currentMonthNum));
 
-        const prevYearActiveMonths = prevYearRecordedMonths.filter(m => (prevAmounts[m] || 0) > 0);
-        const countPrevYear = prevYearActiveMonths.length;
+        const recordedMonthsPrevYear = Object.keys(prevAmounts)
+          .map(Number)
+          .filter(m => (prevAmounts[m] || 0) > 0);
 
-        // Crivo facilitado:
-        // 1. Maioria dos meses registrados até agora no ano atual (ex: se N=3, >=2; se N=4, >=2; se N=1 ou 2, >=1)
-        const majorityThreshold = N > 0 ? (N <= 2 ? 1 : Math.ceil(N / 2)) : 0;
-        const hasMajorityThisYear = N > 0 && countThisYear >= majorityThreshold;
+        let recordedVals = recordedMonthsThisYear.map(m => amounts[m]).filter(v => v > 0);
+        if (recordedVals.length === 0) {
+          recordedVals = recordedMonthsPrevYear.map(m => prevAmounts[m]).filter(v => v > 0);
+        }
 
-        // 2. Ou maioria no ano anterior
-        const majorityPrev = N_prev > 0 ? Math.ceil(N_prev / 2) : 0;
-        const hasMajorityPrevYear = N_prev > 0 && countPrevYear >= majorityPrev;
-
-        // 3. Ou presença consistente (pelo menos 2 meses com registros somando os períodos)
-        const hasConsistentPresence = (countThisYear + countPrevYear) >= 2;
-
-        if (hasMajorityThisYear || hasMajorityPrevYear || hasConsistentPresence) {
+        if (recordedVals.length > 0) {
           isEligible = true;
-
-          // Cálculo de MÉDIA SEMPRE: média simples de todos os meses com registro
-          let recordedValues = activeMonthsThisYear.map(m => amounts[m]).filter(v => v > 0);
-          if (recordedValues.length === 0) {
-            recordedValues = prevYearActiveMonths.map(m => prevAmounts[m]).filter(v => v > 0);
-          }
-
-          if (recordedValues.length > 0) {
-            const sum = recordedValues.reduce((acc, v) => acc + v, 0);
-            forecastValue = Math.round((sum / recordedValues.length) * 100) / 100;
-          } else {
-            isEligible = false;
-            forecastValue = 0;
-          }
-        } else {
-          isEligible = false;
+          const sum = recordedVals.reduce((acc, v) => acc + v, 0);
+          forecastValue = Math.round((sum / recordedVals.length) * 100) / 100;
         }
       }
 
@@ -4995,12 +4970,11 @@ $(document).ready(function() {
       qualifiedCount++;
 
       // REGRA 3: APLICAÇÃO NOS MESES DO PORVIR
-      // Preencher a previsão no mínimo a partir do mês atual, caso já não tenha registros ainda
+      // Preencher a previsão a partir do mês atual (Setembro), caso já não tenha registros ainda, e meses subsequentes até Dezembro
       const catForecastMonths = {};
       const startMonth = (targetYear < currentYear) ? 13 : ((targetYear > currentYear) ? 1 : currentMonthNum);
 
       for (let m = startMonth; m <= 12; m++) {
-        // Se o mês ainda NÃO tem registros reais de transações: aplica a previsão
         const hasRealInMonth = (amounts[m] || 0) > 0;
         if (!hasRealInMonth) {
           catForecastMonths[m] = forecastValue;
@@ -5030,9 +5004,9 @@ $(document).ready(function() {
 
     setTimeout(() => {
       try {
-        const result = calculatePlanningForecastsData(targetYear);
+        const result = calculatePlanningForecastsData(targetYear, planningDataCache);
         loadPlanning();
-        showRefreshToast(`Previsões atualizadas! ${result.qualifiedCount} categorias projetadas a partir do mês atual até Dezembro.`);
+        showRefreshToast(`Previsões atualizadas! ${result.qualifiedCount} categorias projetadas a partir de Setembro até Dezembro.`);
       } catch (err) {
         console.error('Erro ao atualizar previsões:', err);
         showRefreshToast('Erro ao calcular previsões. Verifique os dados das transações.');
