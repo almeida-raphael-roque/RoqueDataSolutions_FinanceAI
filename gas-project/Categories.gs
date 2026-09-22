@@ -115,13 +115,72 @@ function updateCategory(id, name, profile) {
 }
 
 function deleteCategory(name) {
+  if (!name) return false;
+  const nameClean = String(name).trim().toLowerCase();
+
+  // 1. Remove da aba Categorias
   const sheet = getCategoriesSheet();
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim().toLowerCase() === String(name).trim().toLowerCase()) {
+    if (String(data[i][1]).trim().toLowerCase() === nameClean) {
       sheet.deleteRow(i + 1);
-      return true;
+      break;
     }
   }
-  return false;
+
+  // 2. Reclassifica transações existentes para "Outros" para que a categoria não ressuscite na matriz de planejamento
+  try {
+    const txSheet = getTable('Transactions');
+    if (txSheet) {
+      const txData = txSheet.getDataRange().getValues();
+      for (let i = 1; i < txData.length; i++) {
+        if (String(txData[i][2]).trim().toLowerCase() === nameClean) {
+          txSheet.getRange(i + 1, 3).setValue('Outros');
+        }
+      }
+    }
+  } catch(e) {
+    Logger.log('Erro ao atualizar transações após excluir categoria: ' + e);
+  }
+
+  // 3. Remove regras associadas a essa categoria
+  try {
+    const rulesSheet = getRulesSheet();
+    if (rulesSheet) {
+      const rulesData = rulesSheet.getDataRange().getValues();
+      for (let i = rulesData.length - 1; i >= 1; i--) {
+        if (String(rulesData[i][1]).trim().toLowerCase() === nameClean) {
+          rulesSheet.deleteRow(i + 1);
+        }
+      }
+    }
+  } catch(e) {
+    Logger.log('Erro ao remover regras da categoria excluída: ' + e);
+  }
+
+  // 4. Limpa previsões salvas no backend se houver
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const fcRaw = props.getProperty('FIN_ALLY_PLANNING_FORECASTS');
+    if (fcRaw) {
+      const fcObj = JSON.parse(fcRaw);
+      let changed = false;
+      Object.keys(fcObj).forEach(y => {
+        if (fcObj[y]) {
+          Object.keys(fcObj[y]).forEach(k => {
+            if (k.trim().toLowerCase() === nameClean) {
+              delete fcObj[y][k];
+              changed = true;
+            }
+          });
+        }
+      });
+      if (changed) {
+        props.setProperty('FIN_ALLY_PLANNING_FORECASTS', JSON.stringify(fcObj));
+      }
+    }
+  } catch(e) {}
+
+  SpreadsheetApp.flush();
+  return true;
 }

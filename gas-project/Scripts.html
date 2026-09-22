@@ -50,39 +50,146 @@ $(document).ready(function() {
 });
 </script>
 <script>
-  function deleteCategory(name) {
-    if(!confirm("Tem certeza que deseja excluir a categoria '" + name + "'? Esta ação não afetará as transações já importadas, apenas as regras de planejamento e categorização futura.")) return;
+  window.deleteCategory = function(nameOrElem) {
+    let name = '';
+    if (typeof nameOrElem === 'string') {
+      name = decodeURIComponent(nameOrElem).trim();
+    } else if (nameOrElem && nameOrElem.getAttribute) {
+      name = decodeURIComponent(nameOrElem.getAttribute('data-cat') || '').trim();
+    } else if (nameOrElem && typeof $ !== 'undefined' && $(nameOrElem).length) {
+      name = decodeURIComponent($(nameOrElem).attr('data-cat') || '').trim();
+    }
+    if (!name) return;
+    const catName = name;
+    if (!confirm("Tem certeza que deseja excluir a categoria '" + catName + "'? A linha será excluída do planejamento, e suas regras e previsões associadas serão removidas.")) return;
     
-    // Remove locally from GLOBAL_CATEGORIES
+    // 1. Remove localmente de GLOBAL_CATEGORIES
     if (typeof GLOBAL_CATEGORIES !== 'undefined') {
-      GLOBAL_CATEGORIES = GLOBAL_CATEGORIES.filter(c => c.name.toLowerCase() !== name.toLowerCase());
-      saveCategoriesToStorage();
+      GLOBAL_CATEGORIES = GLOBAL_CATEGORIES.filter(c => c.name.toLowerCase() !== catName.toLowerCase());
+      if (typeof saveCategoriesToStorage === 'function') saveCategoriesToStorage();
     }
 
-    // Mostra indicador global de loading
-    const oldHtml = $('#planning-tbody').html();
-    $('#planning-tbody').html('<tr><td colspan="13" class="text-center py-10"><i class="fa-solid fa-circle-notch fa-spin text-primary text-3xl"></i></td></tr>');
-    
+    // 2. Remove de GLOBAL_RULES
+    if (typeof GLOBAL_RULES !== 'undefined') {
+      GLOBAL_RULES = GLOBAL_RULES.filter(r => (r.category || '').toLowerCase() !== catName.toLowerCase());
+      if (typeof saveRulesToStorage === 'function') saveRulesToStorage();
+    }
+
+    // 3. Reclassifica transações existentes em memória para 'Outros' para não ressuscitar a linha na matriz
+    const reclassifyTxs = (arr) => {
+      if (Array.isArray(arr)) {
+        arr.forEach(t => {
+          if (String(t.categoria || '').trim().toLowerCase() === catName.toLowerCase()) {
+            t.categoria = 'Outros';
+          }
+        });
+      }
+    };
+    if (typeof currentLoadedTransactions !== 'undefined') reclassifyTxs(currentLoadedTransactions);
+    if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') reclassifyTxs(GLOBAL_MOCK_TRANSACTIONS);
+
+    // 4. Limpa overrides manuais de transação associados à categoria
+    if (typeof MANUAL_TX_OVERRIDES !== 'undefined') {
+      Object.keys(MANUAL_TX_OVERRIDES).forEach(k => {
+        if (String(MANUAL_TX_OVERRIDES[k] || '').trim().toLowerCase() === catName.toLowerCase()) {
+          delete MANUAL_TX_OVERRIDES[k];
+        }
+      });
+      try { localStorage.setItem('fin_ally_manual_tx_overrides', JSON.stringify(MANUAL_TX_OVERRIDES)); } catch(e) {}
+    }
+
+    // 5. Remove de previsões salvas (fin_ally_planning_forecasts)
+    try {
+      const fcRaw = localStorage.getItem('fin_ally_planning_forecasts');
+      if (fcRaw) {
+        const fcObj = JSON.parse(fcRaw);
+        Object.keys(fcObj).forEach(y => {
+          if (fcObj[y]) {
+            Object.keys(fcObj[y]).forEach(k => {
+              if (k.trim().toLowerCase() === catName.toLowerCase()) {
+                delete fcObj[y][k];
+              }
+            });
+          }
+        });
+        localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(fcObj));
+      }
+    } catch(e) {}
+
+    // 6. Remove de edições manuais (fin_ally_planning_overrides)
+    try {
+      const ovRaw = localStorage.getItem('fin_ally_planning_overrides');
+      if (ovRaw) {
+        const ovObj = JSON.parse(ovRaw);
+        Object.keys(ovObj).forEach(y => {
+          if (ovObj[y]) {
+            Object.keys(ovObj[y]).forEach(k => {
+              if (k.trim().toLowerCase() === catName.toLowerCase()) {
+                delete ovObj[y][k];
+              }
+            });
+          }
+        });
+        localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(ovObj));
+      }
+    } catch(e) {}
+
+    // 7. Remove imediatamente do cache da matriz de planejamento
+    if (typeof planningDataCache !== 'undefined' && planningDataCache) {
+      if (planningDataCache.incomeCategories) {
+        Object.keys(planningDataCache.incomeCategories).forEach(k => {
+          if (k.trim().toLowerCase() === catName.toLowerCase()) {
+            delete planningDataCache.incomeCategories[k];
+          }
+        });
+      }
+      if (planningDataCache.expenseMacros) {
+        ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+          if (planningDataCache.expenseMacros[macro]) {
+            Object.keys(planningDataCache.expenseMacros[macro]).forEach(k => {
+              if (k.trim().toLowerCase() === catName.toLowerCase()) {
+                delete planningDataCache.expenseMacros[macro][k];
+              }
+            });
+          }
+        });
+      }
+    }
+
+    // 8. Remove a linha imediatamente da tabela visual no DOM
+    $('.btn-delete-planning-cat').filter(function() {
+      const c = decodeURIComponent($(this).attr('data-cat') || $(this).data('cat') || '');
+      return c.trim().toLowerCase() === catName.toLowerCase();
+    }).closest('tr').remove();
+
+    if (typeof showRefreshToast === 'function') {
+      showRefreshToast(`Categoria "${catName}" excluída.`);
+    }
+
+    // 9. Sincroniza com backend e recarrega
     if (typeof google !== 'undefined' && google.script && google.script.run) {
       google.script.run
         .withSuccessHandler(function() {
           invalidateCache();
-          if(typeof renderCategoriesList === 'function') renderCategoriesList();
+          if (typeof renderCategoriesList === 'function') renderCategoriesList();
           loadPlanning();
         })
         .withFailureHandler(function(err) {
-          alert("Erro ao excluir categoria: " + err.message);
-          $('#planning-tbody').html(oldHtml);
+          console.warn("Aviso ao excluir categoria no backend: " + (err ? err.message : err));
+          invalidateCache();
+          if (typeof renderCategoriesList === 'function') renderCategoriesList();
+          loadPlanning();
         })
-        .deleteCategory(name);
+        .deleteCategory(catName);
     } else {
       setTimeout(() => {
         invalidateCache();
-        if(typeof renderCategoriesList === 'function') renderCategoriesList();
+        if (typeof renderCategoriesList === 'function') renderCategoriesList();
         loadPlanning();
-      }, 300);
+      }, 200);
     }
-  }
+  };
+  var deleteCategory = window.deleteCategory;
 
   window.editCategoryFromPlanning = function(target) {
     if(!target) return;
@@ -5093,10 +5200,39 @@ $(document).ready(function() {
     if (!data.incomeCategories) data.incomeCategories = {};
     if (!data.expenseMacros) data.expenseMacros = { 'Fixas': {}, 'Variáveis Essenciais': {}, 'Discricionárias': {} };
 
-    // Garante que todas as categorias com previsão constem na matriz de visualização
+    // Remove qualquer categoria que não exista mais em GLOBAL_CATEGORIES (evita re-exibição de categorias excluídas)
+    if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES) && GLOBAL_CATEGORIES.length > 0) {
+      const validLower = new Set(GLOBAL_CATEGORIES.map(c => (c.name || '').trim().toLowerCase()));
+      validLower.add('outros');
+      if (data.incomeCategories) {
+        Object.keys(data.incomeCategories).forEach(cat => {
+          if (!validLower.has(cat.trim().toLowerCase())) {
+            delete data.incomeCategories[cat];
+          }
+        });
+      }
+      if (data.expenseMacros) {
+        ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+          if (data.expenseMacros[macro]) {
+            Object.keys(data.expenseMacros[macro]).forEach(cat => {
+              if (!validLower.has(cat.trim().toLowerCase())) {
+                delete data.expenseMacros[macro][cat];
+              }
+            });
+          }
+        });
+      }
+    }
+
+    // Garante que todas as categorias válidas com previsão constem na matriz de visualização
     Object.keys(yearFc).forEach(cat => {
       const catFc = yearFc[cat];
       if (!catFc || !catFc.months) return;
+
+      const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES))
+        ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
+        : null;
+      if (!catObj && cat.toLowerCase() !== 'outros') return;
 
       let found = !!(data.incomeCategories && data.incomeCategories[cat]);
       if (!found && data.expenseMacros) {
@@ -5109,9 +5245,6 @@ $(document).ready(function() {
       }
 
       if (!found) {
-        const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined')
-          ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
-          : null;
         const profile = ((catObj && catObj.profile) ? catObj.profile : '').toLowerCase();
         const emptyArr = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
 
@@ -5444,7 +5577,7 @@ $(document).ready(function() {
               <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
                 <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
               </button>
-              <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+              <button type="button" onclick="window.deleteCategory(this); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
                 <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
               </button>
             </div>
@@ -5497,7 +5630,7 @@ $(document).ready(function() {
                 <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
                   <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
                 </button>
-                <button type="button" onclick="deleteCategory(decodeURIComponent(this.getAttribute('data-cat'))); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+                <button type="button" onclick="window.deleteCategory(this); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
                   <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
                 </button>
               </div>
