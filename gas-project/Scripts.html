@@ -605,8 +605,14 @@ function openAddCategoryModal(macroProfile) {
     // Toggle global filters
     if (pageId === 'page-categories') {
       $('#global-filters').removeClass('md:flex').addClass('!hidden');
+    } else if (pageId === 'page-planning') {
+      $('#global-filters').removeClass('!hidden').addClass('md:flex');
+      $('#filter-month').addClass('!hidden');
+      $('#filter-year').removeClass('!hidden');
     } else {
       $('#global-filters').removeClass('!hidden').addClass('md:flex');
+      $('#filter-month').removeClass('!hidden');
+      $('#filter-year').removeClass('!hidden');
     }
   }
 
@@ -4639,30 +4645,39 @@ $(document).ready(function() {
   let currentPlanningYear = new Date().getFullYear();
       let planningDataCache = null;
 
-  function initPlanningYearSelect() {
-    const select = $('#planning-year-select');
-    if (select.children().length > 0) return;
-    const current = new Date().getFullYear();
-    for (let y = current - 2; y <= current + 2; y++) {
-      select.append(`<option value="${y}" ${y === current ? 'selected' : ''}>${y}</option>`);
-    }
+  function getActivePlanningYear() {
+    const topYearVal = parseInt($('#filter-year').val(), 10);
+    if (!isNaN(topYearVal) && topYearVal > 2000) return topYearVal;
+    const selectVal = parseInt($('#planning-year-select').val(), 10);
+    if (!isNaN(selectVal) && selectVal > 2000) return selectVal;
+    return new Date().getFullYear();
   }
 
   function loadPlanning() {
-    initPlanningYearSelect();
     $('#planning-loading').removeClass('hidden');
     $('#planning-matrix-container').addClass('hidden');
     
-    currentPlanningYear = parseInt($('#planning-year-select').val());
+    currentPlanningYear = getActivePlanningYear();
+
+    const processAndRender = (data) => {
+      // Se ainda não existirem previsões geradas para o ano alvo, calcula automaticamente
+      const currentFc = getPlanningForecasts();
+      if (!currentFc[String(currentPlanningYear)] || Object.keys(currentFc[String(currentPlanningYear)]).length === 0) {
+        if (typeof calculatePlanningForecastsData === 'function') {
+          calculatePlanningForecastsData(currentPlanningYear);
+        }
+      }
+      applyPlanningOverrides(data);
+      planningDataCache = data;
+      renderPlanning(data);
+      $('#planning-loading').addClass('hidden');
+      $('#planning-matrix-container').removeClass('hidden');
+    };
 
     if (typeof google !== 'undefined' && google.script && google.script.run) {
       google.script.run
         .withSuccessHandler(function(data) {
-          applyPlanningOverrides(data);
-          planningDataCache = data;
-          renderPlanning(data);
-          $('#planning-loading').addClass('hidden');
-          $('#planning-matrix-container').removeClass('hidden');
+          processAndRender(data);
         })
         .withFailureHandler(function(err) {
           console.error(err);
@@ -4673,11 +4688,7 @@ $(document).ready(function() {
     } else {
       setTimeout(() => {
         const mockData = generateMockPlanningData(currentPlanningYear);
-        applyPlanningOverrides(mockData);
-        planningDataCache = mockData;
-        renderPlanning(mockData);
-        $('#planning-loading').addClass('hidden');
-        $('#planning-matrix-container').removeClass('hidden');
+        processAndRender(mockData);
       }, 500);
     }
   }
@@ -4787,6 +4798,229 @@ $(document).ready(function() {
     }
   }
 
+  function calculatePlanningForecastsData(targetYear) {
+    targetYear = parseInt(targetYear, 10) || currentPlanningYear;
+
+    const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = (targetYear < currentYear) ? 12 : ((targetYear > currentYear) ? 1 : (now.getMonth() + 1));
+
+    // 1. Obter todas as transações com categoria atualizada
+    let allTxs = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
+      ? currentLoadedTransactions
+      : ((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : []);
+    if (typeof applyCategoryOverrides === 'function') {
+      allTxs = applyCategoryOverrides(allTxs);
+    }
+
+    // Transações do ano alvo e do ano anterior (caso necessário para histórico e crivo)
+    const yearTxs = allTxs.filter(t => {
+      if (!t.data) return false;
+      const d = parseLocalDateString(t.data);
+      return d && d.getFullYear() === targetYear;
+    });
+
+    const prevYearTxs = allTxs.filter(t => {
+      if (!t.data) return false;
+      const d = parseLocalDateString(t.data);
+      return d && d.getFullYear() === (targetYear - 1);
+    });
+
+    // 2. Meses com registros no ano alvo (meses <= currentMonthNum que possuem registros reais)
+    const recordedMonthSet = new Set();
+    yearTxs.forEach(t => {
+      const d = parseLocalDateString(t.data);
+      if (d) {
+        const m = d.getMonth() + 1;
+        if (targetYear < currentYear || m <= currentMonthNum) {
+          recordedMonthSet.add(m);
+        }
+      }
+    });
+    const recordedMonths = Array.from(recordedMonthSet).sort((a, b) => a - b);
+    const N = recordedMonths.length;
+
+    // Meses com registros no ano anterior
+    const prevYearRecordedMonthSet = new Set();
+    prevYearTxs.forEach(t => {
+      const d = parseLocalDateString(t.data);
+      if (d) prevYearRecordedMonthSet.add(d.getMonth() + 1);
+    });
+    const prevYearRecordedMonths = Array.from(prevYearRecordedMonthSet).sort((a, b) => a - b);
+    const N_prev = prevYearRecordedMonths.length;
+
+    // 3. Agrupar valores por Categoria e Mês no ano alvo
+    const catMonthlyAmounts = {};
+    const catTipoMap = {};
+    yearTxs.forEach(t => {
+      if (!t.categoria) return;
+      const cat = String(t.categoria).trim();
+      const d = parseLocalDateString(t.data);
+      if (!d) return;
+      const m = d.getMonth() + 1;
+      const val = Math.abs(parseFloat(t.valor) || 0);
+
+      if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
+      catMonthlyAmounts[cat][m] = (catMonthlyAmounts[cat][m] || 0) + val;
+      if (t.tipo) catTipoMap[cat] = t.tipo;
+    });
+
+    // Agrupar valores no ano anterior
+    const catPrevMonthlyAmounts = {};
+    prevYearTxs.forEach(t => {
+      if (!t.categoria) return;
+      const cat = String(t.categoria).trim();
+      const d = parseLocalDateString(t.data);
+      if (!d) return;
+      const m = d.getMonth() + 1;
+      const val = Math.abs(parseFloat(t.valor) || 0);
+
+      if (!catPrevMonthlyAmounts[cat]) catPrevMonthlyAmounts[cat] = {};
+      catPrevMonthlyAmounts[cat][m] = (catPrevMonthlyAmounts[cat][m] || 0) + val;
+      if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
+    });
+
+    // Unir nomes de categorias
+    const allCategoryNames = new Set([
+      ...Object.keys(catMonthlyAmounts),
+      ...Object.keys(catPrevMonthlyAmounts)
+    ]);
+    if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES)) {
+      GLOBAL_CATEGORIES.forEach(c => {
+        if (c.name) allCategoryNames.add(c.name.trim());
+      });
+    }
+
+    const forecasts = getPlanningForecasts();
+    if (!forecasts[String(targetYear)]) forecasts[String(targetYear)] = {};
+
+    let qualifiedCount = 0;
+
+    allCategoryNames.forEach(cat => {
+      const amounts = catMonthlyAmounts[cat] || {};
+      const prevAmounts = catPrevMonthlyAmounts[cat] || {};
+
+      // Determinar perfil da categoria
+      const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined')
+        ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
+        : null;
+      const profileStr = ((catObj && catObj.profile) ? catObj.profile : '').toLowerCase();
+      const isReceita = profileStr.includes('receita') || catTipoMap[cat] === 'Entrada';
+      const isDespesaFixa = profileStr.includes('fixa');
+      const isFixedOrIncome = isReceita || isDespesaFixa;
+
+      let isEligible = false;
+      let forecastValue = 0;
+
+      if (isFixedOrIncome) {
+        // REGRA 1: RECEITAS E DESPESAS FIXAS
+        // Sempre replica o último registro para TODOS os meses que não têm registro do porvir (incluindo o mês atual, se ainda não tiver registro)
+        let lastVal = 0;
+        let foundLast = false;
+        // Busca do mês atual para trás no ano alvo
+        for (let m = currentMonthNum; m >= 1; m--) {
+          if (amounts[m] && amounts[m] > 0) {
+            lastVal = amounts[m];
+            foundLast = true;
+            break;
+          }
+        }
+        // Se não encontrou no ano alvo, busca de trás para frente no ano anterior
+        if (!foundLast) {
+          for (let m = 12; m >= 1; m--) {
+            if (prevAmounts[m] && prevAmounts[m] > 0) {
+              lastVal = prevAmounts[m];
+              foundLast = true;
+              break;
+            }
+          }
+        }
+
+        if (lastVal > 0) {
+          isEligible = true;
+          forecastValue = lastVal;
+        } else {
+          isEligible = false;
+        }
+      } else {
+        // REGRA 2: OUTRAS 2 MACROCATEGORIAS (VARIÁVEIS ESSENCIAIS E DISCRICIONÁRIAS)
+        // Crivo: se tem a maioria dos meses com registro (pode basear em registros do ano anterior também caso tenha) -> crivo diminuído
+        // Cálculo: média sempre dos meses com registro
+        const activeMonthsThisYear = recordedMonths.filter(m => (amounts[m] || 0) > 0);
+        const countThisYear = activeMonthsThisYear.length;
+
+        const prevYearActiveMonths = prevYearRecordedMonths.filter(m => (prevAmounts[m] || 0) > 0);
+        const countPrevYear = prevYearActiveMonths.length;
+
+        // Crivo facilitado:
+        // 1. Maioria dos meses registrados até agora no ano atual (ex: se N=3, >=2; se N=4, >=2; se N=1 ou 2, >=1)
+        const majorityThreshold = N > 0 ? (N <= 2 ? 1 : Math.ceil(N / 2)) : 0;
+        const hasMajorityThisYear = N > 0 && countThisYear >= majorityThreshold;
+
+        // 2. Ou maioria no ano anterior
+        const majorityPrev = N_prev > 0 ? Math.ceil(N_prev / 2) : 0;
+        const hasMajorityPrevYear = N_prev > 0 && countPrevYear >= majorityPrev;
+
+        // 3. Ou presença consistente (pelo menos 2 meses com registros somando os períodos)
+        const hasConsistentPresence = (countThisYear + countPrevYear) >= 2;
+
+        if (hasMajorityThisYear || hasMajorityPrevYear || hasConsistentPresence) {
+          isEligible = true;
+
+          // Cálculo de MÉDIA SEMPRE: média simples de todos os meses com registro
+          let recordedValues = activeMonthsThisYear.map(m => amounts[m]).filter(v => v > 0);
+          if (recordedValues.length === 0) {
+            recordedValues = prevYearActiveMonths.map(m => prevAmounts[m]).filter(v => v > 0);
+          }
+
+          if (recordedValues.length > 0) {
+            const sum = recordedValues.reduce((acc, v) => acc + v, 0);
+            forecastValue = Math.round((sum / recordedValues.length) * 100) / 100;
+          } else {
+            isEligible = false;
+            forecastValue = 0;
+          }
+        } else {
+          isEligible = false;
+        }
+      }
+
+      if (!isEligible || forecastValue <= 0) {
+        if (forecasts[String(targetYear)][cat]) {
+          delete forecasts[String(targetYear)][cat];
+        }
+        return;
+      }
+
+      qualifiedCount++;
+
+      // REGRA 3: APLICAÇÃO NOS MESES DO PORVIR
+      // Preencher a previsão no mínimo a partir do mês atual, caso já não tenha registros ainda
+      const catForecastMonths = {};
+      const startMonth = (targetYear < currentYear) ? 13 : ((targetYear > currentYear) ? 1 : currentMonthNum);
+
+      for (let m = startMonth; m <= 12; m++) {
+        // Se o mês ainda NÃO tem registros reais de transações: aplica a previsão
+        const hasRealInMonth = (amounts[m] || 0) > 0;
+        if (!hasRealInMonth) {
+          catForecastMonths[m] = forecastValue;
+        }
+      }
+
+      forecasts[String(targetYear)][cat] = {
+        forecastValue: forecastValue,
+        isEligible: true,
+        isFixed: isFixedOrIncome,
+        isReceita: isReceita,
+        months: catForecastMonths,
+        updatedAt: Date.now()
+      };
+    });
+
+    savePlanningForecasts(targetYear, forecasts);
+    return { qualifiedCount, forecasts };
+  }
+
   function updatePlanningForecasts(targetYear) {
     targetYear = parseInt(targetYear, 10) || currentPlanningYear;
     
@@ -4796,182 +5030,9 @@ $(document).ready(function() {
 
     setTimeout(() => {
       try {
-        const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
-        const currentYear = now.getFullYear();
-        const currentMonthNum = (targetYear < currentYear) ? 12 : ((targetYear > currentYear) ? 1 : (now.getMonth() + 1));
-
-        // 1. Obter todas as transações com categoria atualizada
-        let allTxs = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
-          ? currentLoadedTransactions
-          : ((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : []);
-        if (typeof applyCategoryOverrides === 'function') {
-          allTxs = applyCategoryOverrides(allTxs);
-        }
-
-        // Filtrar transações para o ano alvo
-        const yearTxs = allTxs.filter(t => {
-          if (!t.data) return false;
-          const d = parseLocalDateString(t.data);
-          return d && d.getFullYear() === targetYear;
-        });
-
-        // 2. Identificar meses registrados no ano alvo (meses <= currentMonthNum que possuem registros)
-        const recordedMonthSet = new Set();
-        yearTxs.forEach(t => {
-          const d = parseLocalDateString(t.data);
-          if (d) {
-            const m = d.getMonth() + 1;
-            if (targetYear < currentYear || m <= currentMonthNum) {
-              recordedMonthSet.add(m);
-            }
-          }
-        });
-
-        const recordedMonths = Array.from(recordedMonthSet).sort((a, b) => a - b);
-        const N = recordedMonths.length;
-
-        // Critério dinâmico para "maioria dos meses":
-        // Ex: se tem 3 meses de registro, maioria = 2; se tem 4 = 3; se tem 5 = 3; se tem 6 = 4.
-        const majorityThreshold = N > 0 ? (Math.floor(N / 2) + 1) : 1;
-
-        // Meses recentes (últimos 3 meses com registro)
-        const recentMonths = recordedMonths.slice(-3);
-
-        // 3. Agrupar valores por Categoria e Mês
-        const catMonthlyAmounts = {};
-        yearTxs.forEach(t => {
-          if (!t.categoria) return;
-          const cat = String(t.categoria).trim();
-          const d = parseLocalDateString(t.data);
-          if (!d) return;
-          const m = d.getMonth() + 1;
-          const val = Math.abs(parseFloat(t.valor) || 0);
-
-          if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
-          catMonthlyAmounts[cat][m] = (catMonthlyAmounts[cat][m] || 0) + val;
-        });
-
-        // Incluir também categorias globais configuradas no sistema
-        const allCategoryNames = new Set(Object.keys(catMonthlyAmounts));
-        if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES)) {
-          GLOBAL_CATEGORIES.forEach(c => {
-            if (c.name) allCategoryNames.add(c.name.trim());
-          });
-        }
-
-        const forecasts = getPlanningForecasts();
-        if (!forecasts[String(targetYear)]) forecasts[String(targetYear)] = {};
-
-        let qualifiedCount = 0;
-
-        allCategoryNames.forEach(cat => {
-          const amounts = catMonthlyAmounts[cat] || {};
-          // Meses registrados nos quais a categoria teve transação > 0
-          const activeMonthsForCat = recordedMonths.filter(m => (amounts[m] || 0) > 0);
-          const countRecorded = activeMonthsForCat.length;
-          
-          // Contagem de aparições nos últimos 3 meses registrados
-          const countRecent = recentMonths.filter(m => (amounts[m] || 0) > 0).length;
-
-          // Regra A: Veto por inatividade recente
-          // "se por exemplo nos 3 últimos meses essa categoria não teve registros, então ela não deve constar"
-          let isEligible = true;
-          if (recentMonths.length >= 3 && countRecent === 0) {
-            isEligible = false;
-          } else if (countRecorded >= majorityThreshold) {
-            // Regra B: Presente na maioria dos meses
-            isEligible = true;
-          } else if (countRecent >= 2 || (recentMonths.length < 3 && countRecent >= 1)) {
-            // Regra C: Presente recentemente
-            isEligible = true;
-          } else {
-            isEligible = false;
-          }
-
-          if (!isEligible) {
-            // Se já existia previsão automática anterior dessa categoria, remove para não constar mais
-            if (forecasts[String(targetYear)][cat]) {
-              delete forecasts[String(targetYear)][cat];
-            }
-            return;
-          }
-
-          // Categoria qualificada para previsão!
-          qualifiedCount++;
-
-          // Determinar se é Despesa Fixa
-          const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined')
-            ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
-            : null;
-          const isFixed = catObj && (catObj.profile || '').toLowerCase().includes('fixa');
-
-          let forecastValue = 0;
-          if (isFixed) {
-            // "deixe como default as despesas fixas serem previstas com base no valor delas no último mês com registro"
-            if (activeMonthsForCat.length > 0) {
-              const lastActiveM = activeMonthsForCat[activeMonthsForCat.length - 1];
-              forecastValue = amounts[lastActiveM] || 0;
-            } else {
-              forecastValue = 0;
-            }
-          } else {
-            // "o cálculo vai ser a média dessa categoria ao longo dos meses, desconsiderando os outliers para se ter uma previsão acurada"
-            const nonZeroVals = activeMonthsForCat.map(m => amounts[m]).filter(v => v > 0).sort((a, b) => a - b);
-            if (nonZeroVals.length === 0) {
-              forecastValue = 0;
-            } else if (nonZeroVals.length <= 2) {
-              const sum = nonZeroVals.reduce((acc, v) => acc + v, 0);
-              forecastValue = Math.round((sum / nonZeroVals.length) * 100) / 100;
-            } else {
-              // Remoção de Outliers via IQR (Intervalo Interquartil)
-              const q1 = nonZeroVals[Math.floor(nonZeroVals.length * 0.25)];
-              const q3 = nonZeroVals[Math.ceil(nonZeroVals.length * 0.75) - 1];
-              const iqr = q3 - q1;
-              let filteredVals = nonZeroVals;
-              if (iqr > 0) {
-                filteredVals = nonZeroVals.filter(v => v >= (q1 - 1.5 * iqr) && v <= (q3 + 1.5 * iqr));
-              }
-              if (!filteredVals.length) filteredVals = nonZeroVals;
-              const sum = filteredVals.reduce((acc, v) => acc + v, 0);
-              forecastValue = Math.round((sum / filteredVals.length) * 100) / 100;
-            }
-          }
-
-          // Aplicar previsão aos meses:
-          // No mês atual (ex: Setembro):
-          // Se já houve transação real no mês atual -> mantém transações reais (não prevê neste mês).
-          // Se NÃO houve transação real no mês atual -> aplica a previsão (em itálico e roxo)!
-          // Nos meses futuros (m > currentMonthNum): aplica a previsão até Dezembro!
-          const catForecastMonths = {};
-          for (let m = currentMonthNum; m <= 12; m++) {
-            if (m === currentMonthNum) {
-              const hasRealInCurrentMonth = (amounts[currentMonthNum] || 0) > 0;
-              if (!hasRealInCurrentMonth && forecastValue > 0) {
-                catForecastMonths[m] = forecastValue;
-              }
-            } else {
-              if (forecastValue > 0) {
-                catForecastMonths[m] = forecastValue;
-              }
-            }
-          }
-
-          forecasts[String(targetYear)][cat] = {
-            forecastValue: forecastValue,
-            isEligible: true,
-            isFixed: isFixed,
-            months: catForecastMonths,
-            updatedAt: Date.now()
-          };
-        });
-
-        // Salvar previsões no storage
-        savePlanningForecasts(targetYear, forecasts);
-
-        // Recarregar planejamento e atualizar a tabela
+        const result = calculatePlanningForecastsData(targetYear);
         loadPlanning();
-
-        showRefreshToast(`Previsões atualizadas! ${qualifiedCount} categorias qualificadas e projetadas até Dezembro.`);
+        showRefreshToast(`Previsões atualizadas! ${result.qualifiedCount} categorias projetadas a partir do mês atual até Dezembro.`);
       } catch (err) {
         console.error('Erro ao atualizar previsões:', err);
         showRefreshToast('Erro ao calcular previsões. Verifique os dados das transações.');
@@ -5054,6 +5115,46 @@ $(document).ready(function() {
     // 1. Aplica Previsões Automáticas Calculadas
     const forecasts = getPlanningForecasts();
     const yearFc = forecasts[yStr] || {};
+
+    if (!data.incomeCategories) data.incomeCategories = {};
+    if (!data.expenseMacros) data.expenseMacros = { 'Fixas': {}, 'Variáveis Essenciais': {}, 'Discricionárias': {} };
+
+    // Garante que todas as categorias com previsão constem na matriz de visualização
+    Object.keys(yearFc).forEach(cat => {
+      const catFc = yearFc[cat];
+      if (!catFc || !catFc.months) return;
+
+      let found = !!(data.incomeCategories && data.incomeCategories[cat]);
+      if (!found && data.expenseMacros) {
+        for (const macro of ['Fixas', 'Variáveis Essenciais', 'Discricionárias']) {
+          if (data.expenseMacros[macro] && data.expenseMacros[macro][cat]) {
+            found = true;
+            break;
+          }
+        }
+      }
+
+      if (!found) {
+        const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined')
+          ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
+          : null;
+        const profile = ((catObj && catObj.profile) ? catObj.profile : '').toLowerCase();
+        const emptyArr = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+
+        if (profile.includes('receita') || catFc.isReceita) {
+          data.incomeCategories[cat] = emptyArr;
+        } else if (profile.includes('fixa') || catFc.isFixed) {
+          if (!data.expenseMacros['Fixas']) data.expenseMacros['Fixas'] = {};
+          data.expenseMacros['Fixas'][cat] = emptyArr;
+        } else if (profile.includes('variável') || profile.includes('essencial')) {
+          if (!data.expenseMacros['Variáveis Essenciais']) data.expenseMacros['Variáveis Essenciais'] = {};
+          data.expenseMacros['Variáveis Essenciais'][cat] = emptyArr;
+        } else {
+          if (!data.expenseMacros['Discricionárias']) data.expenseMacros['Discricionárias'] = {};
+          data.expenseMacros['Discricionárias'][cat] = emptyArr;
+        }
+      }
+    });
 
     if (data.incomeCategories) {
       Object.keys(data.incomeCategories).forEach(cat => {
