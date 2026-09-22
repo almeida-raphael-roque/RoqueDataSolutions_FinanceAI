@@ -4999,6 +4999,36 @@ $(document).ready(function() {
     const forecasts = getPlanningForecasts();
     if (!forecasts[String(targetYear)]) forecasts[String(targetYear)] = {};
 
+    // Limpa overrides de valor 0 que silenciam previsões em meses atuais/futuros,
+    // e purga especificamente qualquer override residual de Outubro (mês 10) para ENTRADAS e JANETE
+    try {
+      const allOv = getPlanningOverrides();
+      const yStr = String(targetYear);
+      if (allOv && allOv[yStr]) {
+        let changed = false;
+        Object.keys(allOv[yStr]).forEach(cName => {
+          const cClean = cName.trim().toLowerCase();
+          for (let m = currentMonthNum; m <= 12; m++) {
+            if (allOv[yStr][cName] && allOv[yStr][cName][m] && allOv[yStr][cName][m].val === 0) {
+              delete allOv[yStr][cName][m];
+              changed = true;
+            }
+          }
+          if ((cClean === 'entradas' || cClean === 'janete') && allOv[yStr][cName] && allOv[yStr][cName][10] !== undefined) {
+            delete allOv[yStr][cName][10];
+            changed = true;
+          }
+          if (allOv[yStr][cName] && Object.keys(allOv[yStr][cName]).length === 0) {
+            delete allOv[yStr][cName];
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(allOv));
+        }
+      }
+    } catch(e) {}
+
     let qualifiedCount = 0;
 
     allCategoryNames.forEach(cat => {
@@ -5046,7 +5076,6 @@ $(document).ready(function() {
       } else {
         // REGRA 2: OUTRAS 2 MACROCATEGORIAS (VARIÁVEIS ESSENCIAIS E DISCRICIONÁRIAS)
         // Média de todos os meses com registro na categoria!
-        // "olha na imagem, você deveria ter feito a média da quantidade de meses com registro na categoria e determinado como previsão para os meses subsequentes!"
         const recordedMonthsThisYear = Object.keys(amounts)
           .map(Number)
           .filter(m => (amounts[m] || 0) > 0 && (targetYear < currentYear || m <= currentMonthNum));
@@ -5082,7 +5111,9 @@ $(document).ready(function() {
       const startMonth = (targetYear < currentYear) ? 13 : ((targetYear > currentYear) ? 1 : currentMonthNum);
 
       for (let m = startMonth; m <= 12; m++) {
-        const hasRealInMonth = (amounts[m] || 0) > 0;
+        // No mês atual (Setembro = 9), se já possui valor realizado, preserva o realizado (não projeta)
+        // Em todos os meses futuros (Outubro = 10, Novembro = 11, Dezembro = 12), sempre projeta o valor previsto
+        const hasRealInMonth = (targetYear < currentYear) || ((m <= currentMonthNum) && ((amounts[m] || 0) > 0));
         if (!hasRealInMonth) {
           catForecastMonths[m] = forecastValue;
         }
@@ -5312,11 +5343,21 @@ $(document).ready(function() {
 
     if (data.incomeCategories) {
       Object.keys(data.incomeCategories).forEach(cat => {
+        const catClean = cat.trim().toLowerCase();
+        const catFc = yearFc[cat];
         const catOv = yearOv[cat];
         if (catOv) {
           for (let m = 1; m <= 12; m++) {
             if (catOv[m] !== undefined) {
               const ov = catOv[m];
+              const isFutureOrCurrent = isPlanningMonthForecast(data.year, m);
+              const hasActiveForecast = catFc && catFc.months && catFc.months[m] !== undefined && catFc.months[m] > 0;
+              if (ov.val === 0 && isFutureOrCurrent && hasActiveForecast) {
+                continue;
+              }
+              if ((catClean === 'entradas' || catClean === 'janete') && m === 10 && ov.val === 0) {
+                continue;
+              }
               const cell = data.incomeCategories[cat][m - 1];
               const hasRealized = !!(cell.realized && cell.realized > 0);
               const isFc = ov.isForecast !== undefined ? ov.isForecast : (!hasRealized && isPlanningMonthForecast(data.year, m));
@@ -5341,11 +5382,17 @@ $(document).ready(function() {
       ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
         if (data.expenseMacros[macro]) {
           Object.keys(data.expenseMacros[macro]).forEach(cat => {
+            const catFc = yearFc[cat];
             const catOv = yearOv[cat];
             if (catOv) {
               for (let m = 1; m <= 12; m++) {
                 if (catOv[m] !== undefined) {
                   const ov = catOv[m];
+                  const isFutureOrCurrent = isPlanningMonthForecast(data.year, m);
+                  const hasActiveForecast = catFc && catFc.months && catFc.months[m] !== undefined && catFc.months[m] > 0;
+                  if (ov.val === 0 && isFutureOrCurrent && hasActiveForecast) {
+                    continue;
+                  }
                   const cell = data.expenseMacros[macro][cat][m - 1];
                   const hasRealized = !!(cell.realized && cell.realized > 0);
                   const isFc = ov.isForecast !== undefined ? ov.isForecast : (!hasRealized && isPlanningMonthForecast(data.year, m));

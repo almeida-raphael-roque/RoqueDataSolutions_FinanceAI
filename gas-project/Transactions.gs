@@ -506,10 +506,24 @@ function getPlanningData(year) {
     const yStr = String(targetYear);
     if (overrides && overrides[yStr]) {
       const yearOv = overrides[yStr];
+      let ovBackendChanged = false;
       Object.keys(yearOv).forEach(cat => {
+        const catClean = cat.trim().toLowerCase();
         for (let m = 1; m <= 12; m++) {
           if (yearOv[cat] && yearOv[cat][m] !== undefined) {
             const ov = yearOv[cat][m];
+            // Se for resíduo com 0 em Outubro para ENTRADAS ou JANETE, expurga para liberar a previsão
+            if ((catClean === 'entradas' || catClean === 'janete') && m === 10) {
+              delete yearOv[cat][m];
+              ovBackendChanged = true;
+              continue;
+            }
+            // Se for override com valor 0 em mês futuro/atual, não bloqueia projeções automáticas
+            if (ov.val === 0 && m >= currentMonthNum) {
+              delete yearOv[cat][m];
+              ovBackendChanged = true;
+              continue;
+            }
             if (incomeCategories[cat]) {
               incomeCategories[cat][m - 1].total = ov.val;
               incomeCategories[cat][m - 1].isManualOverride = true;
@@ -525,6 +539,12 @@ function getPlanningData(year) {
           }
         }
       });
+      if (ovBackendChanged) {
+        try {
+          const userProp = PropertiesService.getUserProperties();
+          userProp.setProperty('PLANNING_MANUAL_OVERRIDES', JSON.stringify(overrides));
+        } catch(e) {}
+      }
     }
   } catch (e) {
     console.error('Error applying server overrides', e);
