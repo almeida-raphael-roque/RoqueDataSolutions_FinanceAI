@@ -4762,6 +4762,9 @@ $(document).ready(function() {
   }
 
   function loadPlanning(yearToLoad) {
+    if (typeof clearForecastSelection === 'function') {
+      clearForecastSelection();
+    }
     $('#planning-loading').removeClass('hidden');
     $('#planning-matrix-container').addClass('hidden');
     
@@ -5554,7 +5557,7 @@ $(document).ready(function() {
 
     let titleTooltip = '';
     if (isForecast) {
-      titleTooltip = `Previsão: ${formatCurrency(rawVal)}\n• 1 clique: gerenciar previsão (apagar ou modificar para os próximos meses)\n• 2 cliques: editar valor`;
+      titleTooltip = `Previsão: ${formatCurrency(rawVal)}\n• 1 clique: selecionar categoria para excluir previsão\n• 2 cliques: gerenciar / alterar previsão desta categoria`;
     } else if (isManual) { 
       titleTooltip = `Valor editado manualmente: ${formatCurrency(rawVal)}\n• 1 clique: ver transações\n• 2 cliques: editar valor\n• Botão direito: restaurar cálculo original`;
     } else {
@@ -5753,6 +5756,9 @@ $(document).ready(function() {
     tfootHtml += `<td class="px-4 py-3 text-right font-bold ${totalColorClass} border-l border-gray-300 dark:border-gray-600">${formatCurrency(totalBalanceYear)}</td></tr>`;
     
     $('#planning-tfoot').html(tfootHtml);
+    if (typeof updateForecastSelectionUI === 'function') {
+      updateForecastSelectionUI();
+    }
   }
 
   $(document).on('click', '.planning-toggle-row', function() {
@@ -5894,7 +5900,138 @@ $(document).ready(function() {
     }
   }
 
-  // --- CONTROLE DE CLIQUE (1 CLIQUE = VER DETALHES, 2 CLIQUES = EDITAR) ---
+  // --- GERENCIAMENTO DE SELEÇÃO DE CATEGORIAS DE PREVISÃO EM LOTE ---
+  const selectedForecastCategories = new Map(); // catName -> { cat, month, year, tipo }
+
+  function toggleSelectForecastCategory(cat, month, year, tipo, $td) {
+    if (!cat) return;
+    if (selectedForecastCategories.has(cat)) {
+      selectedForecastCategories.delete(cat);
+    } else {
+      selectedForecastCategories.set(cat, { cat, month, year, tipo });
+    }
+    updateForecastSelectionUI();
+  }
+
+  function clearForecastSelection() {
+    selectedForecastCategories.clear();
+    updateForecastSelectionUI();
+  }
+
+  function updateForecastSelectionUI() {
+    const count = selectedForecastCategories.size;
+    
+    // Atualiza classes visuais nas linhas do planejamento
+    $('#planning-tbody tr').each(function() {
+      const $tr = $(this);
+      const $fcCell = $tr.find('td.planning-cell-action[data-is-forecast="1"]').first();
+      if ($fcCell.length) {
+        const cat = decodeURIComponent($fcCell.attr('data-cat') || '');
+        const isSelected = selectedForecastCategories.has(cat);
+        if (isSelected) {
+          $tr.addClass('category-forecast-selected bg-purple-50/80 dark:bg-purple-950/40 ring-1 ring-inset ring-purple-400 dark:ring-purple-600');
+          const $nameSpan = $tr.find('.planning-child-cat span.truncate');
+          if ($nameSpan.length && !$tr.find('.cat-select-badge').length) {
+            $nameSpan.before('<span class="cat-select-badge inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-600 text-white text-[9px] mr-1.5 shrink-0 shadow-xs"><i class="fa-solid fa-check"></i></span>');
+          }
+        } else {
+          $tr.removeClass('category-forecast-selected bg-purple-50/80 dark:bg-purple-950/40 ring-1 ring-inset ring-purple-400 dark:ring-purple-600');
+          $tr.find('.cat-select-badge').remove();
+        }
+      }
+    });
+
+    // Controla a exibição da barra flutuante de exclusão em lote
+    const $bar = $('#planning-batch-forecast-bar');
+    if (count > 0) {
+      $bar.removeClass('hidden');
+      $('#batch-forecast-count').text(`${count} ${count === 1 ? 'categoria selecionada' : 'categorias selecionadas'}`);
+      
+      const names = Array.from(selectedForecastCategories.keys()).join(', ');
+      $('#batch-forecast-categories-list').text(names).attr('title', names);
+    } else {
+      $bar.addClass('hidden');
+    }
+  }
+
+  function executeBatchDeleteForecasts() {
+    if (!selectedForecastCategories || selectedForecastCategories.size === 0) return;
+    
+    const count = selectedForecastCategories.size;
+    const year = currentPlanningYear;
+    const yStr = String(year);
+
+    const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = (year < currentYear) ? 12 : ((year > currentYear) ? 1 : (now.getMonth() + 1));
+
+    const overrides = getPlanningOverrides();
+    if (!overrides[yStr]) overrides[yStr] = {};
+
+    const forecasts = getPlanningForecasts();
+    if (!forecasts[yStr]) forecasts[yStr] = {};
+
+    const categoriesArray = Array.from(selectedForecastCategories.values());
+
+    categoriesArray.forEach(item => {
+      const cat = item.cat;
+      const tipo = item.tipo;
+      const startMonth = Math.max(item.month || currentMonthNum, currentMonthNum);
+
+      if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
+      if (!forecasts[yStr][cat]) forecasts[yStr][cat] = { forecastValue: 0, months: {} };
+
+      for (let m = startMonth; m <= 12; m++) {
+        overrides[yStr][cat][m] = {
+          val: 0,
+          tipo: tipo,
+          isManualOverride: true,
+          isForecast: true,
+          updatedAt: Date.now()
+        };
+        forecasts[yStr][cat].months[m] = 0;
+      }
+    });
+
+    try {
+      localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(overrides));
+      localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts));
+    } catch(e) {}
+
+    // Sincroniza com o backend estritamente para o ano específico
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      if (google.script.run.savePlanningForecastsBackend) {
+        google.script.run.savePlanningForecastsBackend(year, JSON.stringify(forecasts));
+      }
+      if (google.script.run.savePlanningOverrideBackend) {
+        categoriesArray.forEach(item => {
+          const cat = item.cat;
+          const tipo = item.tipo;
+          const startMonth = Math.max(item.month || currentMonthNum, currentMonthNum);
+          for (let m = startMonth; m <= 12; m++) {
+            google.script.run.savePlanningOverrideBackend(year, cat, m, tipo, 0);
+          }
+        });
+      }
+    }
+
+    selectedForecastCategories.clear();
+    updateForecastSelectionUI();
+
+    loadPlanning(year);
+
+    showRefreshToast(`Previsões de ${count} ${count === 1 ? 'categoria excluída' : 'categorias excluídas'} com sucesso!`);
+  }
+
+  $(document).on('click', '#btn-batch-delete-forecasts', function() {
+    executeBatchDeleteForecasts();
+  });
+
+  $(document).on('click', '#btn-clear-forecast-selection', function() {
+    clearForecastSelection();
+  });
+
+  // --- CONTROLE DE CLIQUE (CÉLULA DE PREVISÃO vs CÉLULA REALIZADA) ---
   let planningCellClickTimer = null;
 
   $(document).on('click', '.planning-cell-action', function(e) {
@@ -5902,7 +6039,7 @@ $(document).ready(function() {
     
     const $td = $(this);
     
-    // Se o usuário deu duplo clique rápido (detail >= 2), cancela o timer de abertura do drawer
+    // Se o usuário deu duplo clique rápido (detail >= 2), cancela o timer de 1 clique
     if (e.detail && e.detail > 1) {
       if (planningCellClickTimer) {
         clearTimeout(planningCellClickTimer);
@@ -5917,20 +6054,20 @@ $(document).ready(function() {
     }
 
     // 1 clique:
-    // Se a célula for uma previsão estimada (data-is-forecast="1"): abre o modal de opções de previsão (apagar ou modificar para os próximos meses)
-    // Se for uma célula normal com transações reais: abre o detalhamento (gaveta)
+    // • Em células de previsão: seleciona/desseleciona a categoria para exclusão de previsão em lote
+    // • Em células realizadas normais: abre o detalhamento de transações (gaveta)
     planningCellClickTimer = setTimeout(function() {
       planningCellClickTimer = null;
       const cat = decodeURIComponent($td.attr('data-cat') || '');
       const month = parseInt($td.attr('data-month'), 10);
       const tipo = $td.attr('data-tipo');
       const isForecast = $td.attr('data-is-forecast') === '1';
-      const rawVal = parseFloat($td.attr('data-raw-value')) || 0;
+      const cellYear = parseInt($td.attr('data-year'), 10) || currentPlanningYear;
 
       if (isForecast) {
-        openPlanningForecastActionModal(cat, month, currentPlanningYear, tipo, rawVal);
+        toggleSelectForecastCategory(cat, month, cellYear, tipo, $td);
       } else {
-        openPlanningDrawer(cat, month, currentPlanningYear, tipo);
+        openPlanningDrawer(cat, month, cellYear, tipo);
       }
     }, 240);
   });
@@ -5942,8 +6079,21 @@ $(document).ready(function() {
     }
     if ($(e.target).is('input')) return;
     
-    // 2 cliques: ativa o modo de edição inline da célula
-    startInlineCellEdit($(this));
+    const $td = $(this);
+    const cat = decodeURIComponent($td.attr('data-cat') || '');
+    const month = parseInt($td.attr('data-month'), 10);
+    const tipo = $td.attr('data-tipo');
+    const isForecast = $td.attr('data-is-forecast') === '1';
+    const cellYear = parseInt($td.attr('data-year'), 10) || currentPlanningYear;
+    const rawVal = parseFloat($td.attr('data-raw-value')) || 0;
+
+    if (isForecast) {
+      // 2 cliques em célula de previsão: ABRE O MODAL DE AÇÃO DE PREVISÃO (que antes abria com 1 clique)!
+      openPlanningForecastActionModal(cat, month, cellYear, tipo, rawVal);
+    } else {
+      // 2 cliques em célula realizada: ativa o modo de edição inline da célula
+      startInlineCellEdit($td);
+    }
   });
 
   $(document).on('contextmenu', '.planning-cell-action', function(e) {

@@ -24,13 +24,13 @@
           </div>
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span><i class="fa-solid fa-mouse-pointer text-[11px] text-primary mr-1"></i>1 clique: ver transações</span>
+          <span><i class="fa-solid fa-wand-magic-sparkles text-[11px] text-purple-600 dark:text-purple-400 mr-1"></i>Previsão: 1 clique seleciona • 2 cliques gerenciar</span>
           <span class="text-gray-300 dark:text-gray-600">•</span>
-          <span><i class="fa-solid fa-pen-to-square text-[11px] text-primary mr-1"></i>2 cliques: editar célula</span>
+          <span><i class="fa-solid fa-receipt text-[11px] text-primary mr-1"></i>Realizado: 1 clique transações • 2 cliques editar</span>
           <span class="text-gray-300 dark:text-gray-600">•</span>
-          <span class="italic text-purple-600 dark:text-purple-400">Itálico: Previsto (mês atual e meses futuros)</span>
+          <span class="italic text-purple-600 dark:text-purple-400">Itálico: Previsto</span>
           <span class="text-gray-300 dark:text-gray-600">•</span>
-          <span class="font-bold text-gray-800 dark:text-gray-200">Negrito: Apenas com alteração</span>
+          <span class="font-bold text-gray-800 dark:text-gray-200">Negrito: Com alteração</span>
         </p>
       </div>
       <div class="flex items-center gap-3 w-full sm:w-auto">
@@ -235,6 +235,32 @@
           Fechar
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Barra Flutuante de Ação em Lote: Excluir Previsões de Categorias Selecionadas -->
+  <div id="planning-batch-forecast-bar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-slate-800 border-2 border-purple-500 dark:border-purple-600 rounded-2xl shadow-2xl px-5 py-3.5 flex flex-wrap items-center gap-4 transition-all duration-300 max-w-2xl w-[92%] sm:w-auto">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-900/60 flex items-center justify-center text-purple-600 dark:text-purple-300 shrink-0">
+        <i class="fa-solid fa-check-double text-sm"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span id="batch-forecast-count" class="text-sm font-bold text-gray-900 dark:text-white">1 categoria selecionada</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">Previsão</span>
+        </div>
+        <div id="batch-forecast-categories-list" class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs mt-0.5"></div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 ml-auto">
+      <button id="btn-batch-delete-forecasts" type="button" class="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md flex items-center gap-2 cursor-pointer">
+        <i class="fa-solid fa-trash-can text-xs"></i>
+        <span>Excluir Previsão</span>
+      </button>
+      <button id="btn-clear-forecast-selection" type="button" class="bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer" title="Desmarcar todas">
+        <i class="fa-solid fa-xmark mr-1 sm:mr-1.5"></i>
+        <span>Cancelar</span>
+      </button>
     </div>
   </div>
 </div>
