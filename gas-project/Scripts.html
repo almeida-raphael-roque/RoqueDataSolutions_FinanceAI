@@ -5101,7 +5101,8 @@ $(document).ready(function() {
         }
       } else {
         // REGRA 2: OUTRAS 2 MACROCATEGORIAS (VARIÁVEIS ESSENCIAIS E DISCRICIONÁRIAS)
-        // Média de todos os meses com registro na categoria!
+        // PREVER APENAS LINHAS COM MUITA RECORRÊNCIA AO LONGO DOS MESES (MAIORIA DOS MESES COM REGISTRO, > 50%)
+        // As demais não precisam prever (ex: 2 de 12 meses não prevê; 7 de 12 meses prevê)
         const recordedMonthsThisYear = Object.keys(amounts)
           .map(Number)
           .filter(m => (amounts[m] || 0) > 0 && (targetYear < currentYear || m <= currentMonthNum));
@@ -5110,15 +5111,40 @@ $(document).ready(function() {
           .map(Number)
           .filter(m => (prevAmounts[m] || 0) > 0);
 
-        let recordedVals = recordedMonthsThisYear.map(m => amounts[m]).filter(v => v > 0);
-        if (recordedVals.length === 0) {
-          recordedVals = recordedMonthsPrevYear.map(m => prevAmounts[m]).filter(v => v > 0);
+        // Contagem nos últimos 12 meses contínuos (rolling 12 months)
+        let rolling12RecordedCount = 0;
+        for (let m = 1; m <= currentMonthNum; m++) {
+          if ((amounts[m] || 0) > 0) rolling12RecordedCount++;
+        }
+        for (let m = currentMonthNum + 1; m <= 12; m++) {
+          if ((prevAmounts[m] || 0) > 0) rolling12RecordedCount++;
         }
 
-        if (recordedVals.length > 0) {
-          isEligible = true;
-          const sum = recordedVals.reduce((acc, v) => acc + v, 0);
-          forecastValue = Math.round((sum / recordedVals.length) * 100) / 100;
+        const elapsedThisYear = (targetYear === currentYear) ? currentMonthNum : (targetYear < currentYear ? 12 : 0);
+        const thisYearCount = recordedMonthsThisYear.length;
+        const prevYearCount = recordedMonthsPrevYear.length;
+
+        // Critério de MAIORIA dos meses: mais da metade dos meses com registro (> 50%)
+        // Ex: 7 de 12 meses (7/12 = 58.3% > 50%) -> prevê
+        // 2 de 12 meses (2/12 = 16.7% <= 50%) -> NÃO prevê
+        // Nos meses decorridos do ano corrente: maioria (> 50%, ex: 5 de 9 meses) -> prevê
+        const hasMajorityRolling12 = (rolling12RecordedCount / 12) > 0.5; // >= 7 registros em 12 meses
+        const hasMajorityThisYear = elapsedThisYear >= 3 && ((thisYearCount / elapsedThisYear) > 0.5);
+        const hasMajorityPrevYear = (prevYearCount / 12) > 0.5; // >= 7 registros em 12 meses
+
+        const hasHighRecurrence = hasMajorityRolling12 || hasMajorityThisYear || hasMajorityPrevYear;
+
+        if (hasHighRecurrence) {
+          let recordedVals = recordedMonthsThisYear.map(m => amounts[m]).filter(v => v > 0);
+          if (recordedVals.length === 0) {
+            recordedVals = recordedMonthsPrevYear.map(m => prevAmounts[m]).filter(v => v > 0);
+          }
+
+          if (recordedVals.length > 0) {
+            isEligible = true;
+            const sum = recordedVals.reduce((acc, v) => acc + v, 0);
+            forecastValue = Math.round((sum / recordedVals.length) * 100) / 100;
+          }
         }
       }
 
@@ -5369,6 +5395,16 @@ $(document).ready(function() {
                   }
                 }
               }
+            } else if (macro !== 'Fixas') {
+              // Categoria não elegível para previsão (sem alta recorrência): limpa resíduos
+              for (let m = 1; m <= 12; m++) {
+                const cell = data.expenseMacros[macro][cat][m - 1];
+                if ((!cell.realized || cell.realized === 0) && !cell.isManualOverride) {
+                  cell.total = 0;
+                  cell.planned = 0;
+                  cell.isForecast = false;
+                }
+              }
             }
           });
         }
@@ -5530,10 +5566,9 @@ $(document).ready(function() {
   function renderCategoryMonthCell(valObj, cat, monthNum, tipo, year) {
     const isGlobalForecastMonth = isPlanningMonthForecast(year, monthNum);
     const hasRealized = !!(valObj && valObj.realized > 0);
-    // Célula é considerada previsão se:
-    // 1) Marcada com isForecast
-    // 2) OU não tem transações realizadas e (mês é futuro ou tem valor previsto)
-    const isForecast = (valObj && valObj.isForecast) || (!hasRealized && (isGlobalForecastMonth || (valObj && valObj.planned > 0)));
+    // Célula é considerada previsão se possui valor previsto ativo ou flag isForecast com valor projetado
+    const hasForecastVal = !!((valObj && valObj.planned > 0) || (valObj && valObj.isForecast && valObj.total > 0));
+    const isForecast = hasForecastVal || (!hasRealized && isGlobalForecastMonth && (valObj && valObj.total > 0)) || (valObj && valObj.isForecast && !hasRealized && valObj.total > 0);
     const isManual = !!(valObj && valObj.isManualOverride);
     
     let textClasses = '';
