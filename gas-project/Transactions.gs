@@ -573,6 +573,25 @@ function getPlanningOverridesBackend() {
   }
 }
 
+function removePlanningOverrideBackend(year, cat, month) {
+  try {
+    const userProp = PropertiesService.getUserProperties();
+    let overrides = {};
+    const raw = userProp.getProperty('PLANNING_MANUAL_OVERRIDES');
+    if (raw) {
+      try { overrides = JSON.parse(raw); } catch(e) {}
+    }
+    const yStr = String(year);
+    if (overrides[yStr] && overrides[yStr][cat] && overrides[yStr][cat][month] !== undefined) {
+      delete overrides[yStr][cat][month];
+      userProp.setProperty('PLANNING_MANUAL_OVERRIDES', JSON.stringify(overrides));
+    }
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
 function getTransactionsForCategorization() {
   const sheet = getTable('Transactions');
   const data = sheet.getDataRange().getValues();

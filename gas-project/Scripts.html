@@ -4285,8 +4285,8 @@ $(document).ready(function() {
     const encodedCat = encodeURIComponent(cat);
 
     const titleTooltip = isManual 
-      ? `Valor editado manualmente: ${formatCurrency(rawVal)} (Prepondera na atualização). Clique para editar (Alt+clique para lançamentos, botão direito para restaurar).`
-      : `Clique para escrever diretamente na célula (Alt+clique para ver lançamentos).`;
+      ? `Valor editado manualmente: ${formatCurrency(rawVal)}\n• 1 clique: ver transações\n• 2 cliques: editar valor\n• Botão direito: restaurar cálculo original`
+      : `• 1 clique: ver transações (descrição, categoria, valor, data)\n• 2 cliques: editar valor diretamente`;
 
     return `<td class="px-2 py-1.5 text-center planning-cell-action cursor-pointer hover:bg-blue-50/70 dark:hover:bg-slate-700/60 transition-colors relative group/cell"
                 data-cat="${encodedCat}"
@@ -4507,10 +4507,13 @@ $(document).ready(function() {
     const month = parseInt($td.attr('data-month'), 10);
     const tipo = $td.attr('data-tipo');
     const rawVal = parseFloat($td.attr('data-raw-value')) || 0;
+    const isManual = $td.attr('data-is-manual') === '1';
     
     const displayVal = rawVal === 0 ? '' : rawVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     
     $td.data('previous-html', $td.html());
+    $td.data('initial-raw-val', rawVal);
+    $td.data('initial-is-manual', isManual);
     
     const input = $(`
       <input type="text"
@@ -4534,6 +4537,7 @@ $(document).ready(function() {
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
+        committed = true;
         cancelInlineCellEdit(input);
       } else if (e.key === 'Tab') {
         e.preventDefault();
@@ -4568,8 +4572,21 @@ $(document).ready(function() {
     const tipo = $td.attr('data-tipo');
     const year = currentPlanningYear;
     
+    const initialRawVal = parseFloat($td.data('initial-raw-val')) || 0;
+    const initialIsManual = $td.data('initial-is-manual') === true;
     const parsedVal = parseUserInputCurrency(rawText);
     
+    // Se o usuário NÃO alterou o valor (ex: continuou o mesmo valor que já estava na célula):
+    // NÃO deixa em negrito e NÃO aplica override manual!
+    const hasChanged = Math.abs(parsedVal - initialRawVal) > 0.005;
+    
+    if (!hasChanged) {
+      // Sem alteração: restaura a célula exatamente ao estado que estava antes dos 2 cliques
+      cancelInlineCellEdit($input);
+      return;
+    }
+    
+    // Houve alteração no valor: salva e aplica em negrito
     savePlanningOverride(year, cat, month, tipo, parsedVal);
     
     if (planningDataCache) {
@@ -4597,19 +4614,46 @@ $(document).ready(function() {
     }
   }
 
+  // --- CONTROLE DE CLIQUE (1 CLIQUE = VER DETALHES, 2 CLIQUES = EDITAR) ---
+  let planningCellClickTimer = null;
+
   $(document).on('click', '.planning-cell-action', function(e) {
     if ($(e.target).is('input')) return;
     
-    // Se o usuário segurar Alt ou Shift, abre o detalhamento (gaveta)
-    if (e.altKey || e.shiftKey) {
-      const cat = decodeURIComponent($(this).attr('data-cat') || '');
-      const month = parseInt($(this).attr('data-month'), 10);
-      const tipo = $(this).attr('data-tipo');
-      openPlanningDrawer(cat, month, currentPlanningYear, tipo);
+    const $td = $(this);
+    
+    // Se o usuário deu duplo clique rápido (detail >= 2), cancela o timer de abertura do drawer
+    if (e.detail && e.detail > 1) {
+      if (planningCellClickTimer) {
+        clearTimeout(planningCellClickTimer);
+        planningCellClickTimer = null;
+      }
       return;
     }
     
-    // Clique normal: edição direta na célula
+    if (planningCellClickTimer) {
+      clearTimeout(planningCellClickTimer);
+      planningCellClickTimer = null;
+    }
+
+    // 1 clique: abre o detalhamento (gaveta) exibindo descrição, categoria, valor e data
+    planningCellClickTimer = setTimeout(function() {
+      planningCellClickTimer = null;
+      const cat = decodeURIComponent($td.attr('data-cat') || '');
+      const month = parseInt($td.attr('data-month'), 10);
+      const tipo = $td.attr('data-tipo');
+      openPlanningDrawer(cat, month, currentPlanningYear, tipo);
+    }, 240);
+  });
+
+  $(document).on('dblclick', '.planning-cell-action', function(e) {
+    if (planningCellClickTimer) {
+      clearTimeout(planningCellClickTimer);
+      planningCellClickTimer = null;
+    }
+    if ($(e.target).is('input')) return;
+    
+    // 2 cliques: ativa o modo de edição inline da célula
     startInlineCellEdit($(this));
   });
 
@@ -4628,8 +4672,15 @@ $(document).ready(function() {
   });
 
   function openPlanningDrawer(cat, month, year, tipo) {
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const monthName = monthNames[month - 1] || `Mês ${month}`;
+    
     $('#planning-drawer-title').text(cat);
-    $('#planning-drawer-subtitle').text(`Mês ${month}/${year}`);
+    $('#planning-drawer-subtitle').html(`
+      <span class="font-medium text-gray-700 dark:text-gray-300">${monthName} de ${year}</span>
+      <span class="mx-1 text-gray-300 dark:text-gray-600">&bull;</span>
+      <span class="${tipo === 'Entrada' ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'}">${tipo}</span>
+    `);
     
     $('#planning-drawer-tx-list').empty();
     $('#planning-drawer-empty').addClass('hidden');
@@ -4658,7 +4709,7 @@ $(document).ready(function() {
       setTimeout(() => {
         $('#planning-drawer-loading').addClass('hidden');
         renderDrawerTransactions((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' ? GLOBAL_MOCK_TRANSACTIONS : []), cat, month, year, tipo);
-      }, 300);
+      }, 200);
     }
   }
 
@@ -4666,9 +4717,10 @@ $(document).ready(function() {
     const list = $('#planning-drawer-tx-list');
     list.empty();
     
-    let filtered = rows.filter(r => r.categoria === cat && r.tipo === tipo);
+    let filtered = (rows || []).filter(r => r.categoria === cat && r.tipo === tipo);
 
     filtered = filtered.filter(r => {
+      if (!r.data) return false;
       const d = parseLocalDateString(r.data);
       return d.getFullYear() === year && (d.getMonth() + 1) === month;
     });
@@ -4677,18 +4729,59 @@ $(document).ready(function() {
       $('#planning-drawer-empty').removeClass('hidden');
     } else {
       $('#planning-drawer-empty').addClass('hidden');
+      
+      const totalSum = filtered.reduce((acc, curr) => acc + (parseFloat(curr.valor) || 0), 0);
+      
+      // Resumo no topo da lista
+      list.append(`
+        <li class="p-3.5 mb-3 bg-blue-50/80 dark:bg-slate-700/60 rounded-xl border border-blue-100 dark:border-slate-600 flex items-center justify-between shadow-2xs">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-primary dark:text-blue-300">Total Consolidado</span>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">${filtered.length} ${filtered.length === 1 ? 'lançamento' : 'lançamentos'}</p>
+          </div>
+          <span class="text-base font-bold ${tipo === 'Entrada' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}">
+            ${formatCurrency(totalSum)}
+          </span>
+        </li>
+      `);
+
       filtered.forEach(t => {
         const d = parseLocalDateString(t.data);
-        const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}`;
-        const color = t.tipo === 'Entrada' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+        const day = d.getDate().toString().padStart(2, '0');
+        const monthNum = (d.getMonth() + 1).toString().padStart(2, '0');
+        const yearFull = d.getFullYear();
+        const dateFormatted = `${day}/${monthNum}/${yearFull}`;
+        const isEntrada = t.tipo === 'Entrada';
+        const color = isEntrada ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+        const sign = isEntrada ? '+' : '-';
+        
         list.append(`
-          <li class="py-3 flex justify-between items-center group">
-            <div>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">${t.descricao}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">${dateStr} &bull; ${t.origem || 'Manual'}</p>
-            </div>
-            <div class="text-sm font-bold ${color}">
-              ${formatCurrency(t.valor)}
+          <li class="py-3 px-3.5 bg-white dark:bg-slate-800/90 hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded-xl transition-all border border-gray-200 dark:border-slate-700 mb-2 shadow-2xs">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <!-- Descrição -->
+                <p class="text-sm font-semibold text-gray-900 dark:text-white truncate" title="${t.descricao || 'Sem descrição'}">
+                  ${t.descricao || 'Sem descrição'}
+                </p>
+                <!-- Categoria e Data -->
+                <div class="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
+                  <span class="inline-flex items-center gap-1.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-md font-medium">
+                    <i class="fa-solid fa-tag text-[10px] text-primary"></i>
+                    <span>${t.categoria || cat}</span>
+                  </span>
+                  <span class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+                    <i class="fa-regular fa-calendar text-[10px] text-gray-400"></i>
+                    <span class="font-medium">${dateFormatted}</span>
+                  </span>
+                  ${t.origem ? `<span class="text-gray-300 dark:text-gray-600">•</span><span class="text-gray-400 dark:text-gray-500">${t.origem}</span>` : ''}
+                </div>
+              </div>
+              <!-- Valor -->
+              <div class="text-right shrink-0">
+                <span class="text-sm font-bold ${color}">
+                  ${sign} ${formatCurrency(Math.abs(t.valor))}
+                </span>
+              </div>
             </div>
           </li>
         `);
