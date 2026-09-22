@@ -55,6 +55,37 @@
         </button>
       </div>
     </div>
+
+    <!-- Painel Superior de Ação em Lote para Categorias Selecionadas -->
+    <div id="planning-top-selection-bar" class="hidden px-6 py-3 bg-gradient-to-r from-purple-50 via-indigo-50/60 to-purple-50 dark:from-slate-800 dark:via-purple-950/40 dark:to-slate-800 border-b border-purple-200 dark:border-purple-800/70 flex flex-wrap items-center justify-between gap-3 animate-fade-in transition-all">
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-purple-600 text-white text-xs shadow-xs">
+          <i class="fa-solid fa-check-double"></i>
+        </span>
+        <div class="flex items-center gap-2">
+          <span id="top-selection-count" class="text-xs sm:text-sm font-bold text-purple-900 dark:text-purple-200">1 categoria selecionada</span>
+          <span class="text-gray-300 dark:text-gray-600 hidden sm:inline">•</span>
+          <span id="top-selection-categories-preview" class="text-xs text-gray-600 dark:text-gray-400 font-medium truncate max-w-xs md:max-w-md hidden sm:inline"></span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Botão Excluir Tudo Selecionado -->
+        <button id="btn-top-batch-delete" type="button" class="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-trash-can text-xs"></i>
+          <span>Excluir Previsão</span>
+        </button>
+        <!-- Botão Editar Tudo Selecionado -->
+        <button id="btn-top-batch-edit" type="button" class="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-pen-to-square text-xs"></i>
+          <span>Editar Selecionadas</span>
+        </button>
+        <!-- Botão Cancelar -->
+        <button id="btn-top-batch-cancel" type="button" class="bg-white hover:bg-gray-100 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-slate-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer">
+          <i class="fa-solid fa-xmark mr-1"></i>
+          <span>Cancelar</span>
+        </button>
+      </div>
+    </div>
     <div class="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
       <table class="w-full text-sm text-left whitespace-nowrap border-separate border-spacing-0">
         <thead id="planning-thead" class="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-900 sticky top-0 z-20 shadow-sm">
@@ -238,7 +269,64 @@
     </div>
   </div>
 
-  <!-- Barra Flutuante de Ação em Lote: Excluir Previsões de Categorias Selecionadas -->
+  <!-- Modal Edição em Lote de Previsões -->
+  <div id="modal-batch-edit-forecast" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+      <div class="px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white">
+            <i class="fa-solid fa-pen-to-square text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold">Editar Previsão em Lote</h3>
+            <p class="text-[11px] text-purple-100">Atualizar valor previsto para as categorias selecionadas</p>
+          </div>
+        </div>
+        <button type="button" id="btn-batch-edit-close" class="text-white/80 hover:text-white text-lg cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">
+            Categorias Selecionadas:
+          </label>
+          <div id="batch-edit-categories-chips" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700">
+            <!-- Chips injetados via JS -->
+          </div>
+        </div>
+
+        <div>
+          <label for="batch-edit-input-val" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wider">
+            Novo Valor Previsto Mensal (R$):
+          </label>
+          <div class="relative">
+            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">R$</span>
+            <input type="text" id="batch-edit-input-val" placeholder="0,00" 
+              class="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-2 border-purple-200 dark:border-purple-800/80 rounded-xl text-base font-bold text-gray-900 dark:text-white focus:outline-none focus:border-purple-600 focus:bg-white dark:focus:bg-slate-900 transition-all">
+          </div>
+          <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+            Este valor será aplicado aos meses atuais e futuros de todas as categorias selecionadas.
+          </p>
+        </div>
+
+        <div class="pt-2 space-y-2">
+          <button type="button" id="btn-batch-edit-confirm" 
+            class="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-[0.99] text-white rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-check text-xs"></i>
+            <span>Salvar Previsão em Lote</span>
+          </button>
+          <button type="button" id="btn-batch-edit-cancel" 
+            class="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra Flutuante de Ação em Lote: Excluir ou Editar Previsões de Categorias Selecionadas -->
   <div id="planning-batch-forecast-bar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-slate-800 border-2 border-purple-500 dark:border-purple-600 rounded-2xl shadow-2xl px-5 py-3.5 flex flex-wrap items-center gap-4 transition-all duration-300 max-w-2xl w-[92%] sm:w-auto">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-900/60 flex items-center justify-center text-purple-600 dark:text-purple-300 shrink-0">
@@ -253,9 +341,13 @@
       </div>
     </div>
     <div class="flex items-center gap-2 ml-auto">
-      <button id="btn-batch-delete-forecasts" type="button" class="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md flex items-center gap-2 cursor-pointer">
+      <button id="btn-batch-delete-forecasts" type="button" class="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
         <i class="fa-solid fa-trash-can text-xs"></i>
-        <span>Excluir Previsão</span>
+        <span>Excluir</span>
+      </button>
+      <button id="btn-batch-edit-forecasts" type="button" class="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
+        <i class="fa-solid fa-pen-to-square text-xs"></i>
+        <span>Editar</span>
       </button>
       <button id="btn-clear-forecast-selection" type="button" class="bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer" title="Desmarcar todas">
         <i class="fa-solid fa-xmark mr-1 sm:mr-1.5"></i>

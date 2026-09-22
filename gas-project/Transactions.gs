@@ -518,12 +518,6 @@ function getPlanningData(year) {
               ovBackendChanged = true;
               continue;
             }
-            // Apenas para meses futuros do ano corrente, overrides zerados não bloqueiam previsões automáticas
-            if (targetYear === currentYear && ov.val === 0 && m >= currentMonthNum) {
-              delete yearOv[cat][m];
-              ovBackendChanged = true;
-              continue;
-            }
             if (incomeCategories[cat]) {
               incomeCategories[cat][m - 1].total = ov.val;
               incomeCategories[cat][m - 1].isManualOverride = true;
