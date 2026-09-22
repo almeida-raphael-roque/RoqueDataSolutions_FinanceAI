@@ -223,6 +223,16 @@ function openAddCategoryModal(macroProfile) {
   Chart.register(ChartDataLabels);
   Chart.defaults.plugins.datalabels.display = false; // Disable globally by default
 
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   let GLOBAL_MOCK_TRANSACTIONS = [
     { data: "2026-05-20", valor: 500.00, tipo: "Saída", descricao: "CDB LIMITE GARANTIDO", categoria: "", origem: "Conta Nubank" },
     { data: "2026-05-18", valor: 145.50, tipo: "Saída", descricao: "DONA 216 NORTE", categoria: "", origem: "Cartão Nubank" },
@@ -253,6 +263,51 @@ function openAddCategoryModal(macroProfile) {
     { data: "2026-01-05", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário" },
     { data: "2026-01-05", valor: 3500.00, tipo: "Entrada", descricao: "EDILSON - Consultoria", categoria: "EDILSON", origem: "Conta Itaú" }
   ];
+
+  // Assign stable unique IDs to mock transactions
+  GLOBAL_MOCK_TRANSACTIONS.forEach((t, i) => {
+    if (!t.id) t.id = 'mock_tx_' + (i + 1);
+  });
+
+  // Persistent mock transactions across sessions
+  try {
+    const savedMockTx = localStorage.getItem('finance_mock_transactions');
+    if (savedMockTx) {
+      const parsedMock = JSON.parse(savedMockTx);
+      if (Array.isArray(parsedMock) && parsedMock.length > 0) {
+        GLOBAL_MOCK_TRANSACTIONS = parsedMock;
+      }
+    }
+  } catch(e) {
+    console.warn("Could not read saved mock transactions:", e);
+  }
+
+  function saveMockTransactionsToStorage() {
+    try {
+      localStorage.setItem('finance_mock_transactions', JSON.stringify(GLOBAL_MOCK_TRANSACTIONS));
+    } catch(e) {
+      console.warn("Could not save mock transactions to storage:", e);
+    }
+  }
+
+  // Persistent manual transaction category overrides (per-transaction)
+  let MANUAL_TX_OVERRIDES = {};
+  try {
+    const savedManual = localStorage.getItem('finance_manual_tx_overrides');
+    if (savedManual) {
+      MANUAL_TX_OVERRIDES = JSON.parse(savedManual);
+    }
+  } catch(e) {
+    console.warn("Could not read manual tx overrides:", e);
+  }
+
+  function saveManualTxOverrides() {
+    try {
+      localStorage.setItem('finance_manual_tx_overrides', JSON.stringify(MANUAL_TX_OVERRIDES));
+    } catch(e) {
+      console.warn("Could not save manual tx overrides:", e);
+    }
+  }
 
   let GLOBAL_MOCK_BACKUP = null;
 
@@ -298,6 +353,36 @@ function openAddCategoryModal(macroProfile) {
     { id: 2, pattern: "IFD", clean: "iFood", categoryId: 1 },
     { id: 3, pattern: "POP 99", clean: "99 APP", categoryId: 2 }
   ];
+  try {
+    const savedRules = localStorage.getItem('finance_user_rules');
+    if (savedRules) {
+      const parsed = JSON.parse(savedRules);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        GLOBAL_RULES = parsed;
+      }
+    }
+  } catch(e) {
+    console.warn("Could not read user rules from storage:", e);
+  }
+
+  function saveRulesToStorage() {
+    try {
+      localStorage.setItem('finance_user_rules', JSON.stringify(GLOBAL_RULES));
+    } catch(e) {
+      console.warn("Could not save user rules to storage:", e);
+    }
+    if (typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.saveAllUserRules === 'function') {
+      const rulesToSend = GLOBAL_RULES.map(r => {
+        const cat = GLOBAL_CATEGORIES.find(c => c.id == r.categoryId);
+        return {
+          pattern: r.pattern,
+          categoria: cat ? cat.name : (r.categoria || ''),
+          clean: r.clean || r.pattern
+        };
+      });
+      google.script.run.saveAllUserRules(rulesToSend);
+    }
+  }
 
   // Persistent category overrides across all views and sheets
   let CATEGORY_OVERRIDES = {};
@@ -389,21 +474,39 @@ function openAddCategoryModal(macroProfile) {
     }).map(r => {
       const rawDesc = String(r.descricao || '').trim().toUpperCase();
       const normDesc = normalizeDescription(r.descricao).toUpperCase();
+      const txKey = `${r.data}_${r.descricao}_${r.valor}_${r.origem || ''}`;
+      const txKeyAlt = `${r.data}_${r.valor}_${rawDesc}`;
       
-      // Check user category overrides first (exact raw description or normalized description)
-      if (CATEGORY_OVERRIDES[rawDesc]) {
-        r.categoria = CATEGORY_OVERRIDES[rawDesc];
-      } else if (CATEGORY_OVERRIDES[normDesc]) {
-        r.categoria = CATEGORY_OVERRIDES[normDesc];
-      } else if (GLOBAL_RULES && Array.isArray(GLOBAL_RULES)) {
+      // 0. Manual transaction specific override has TOP priority
+      if (MANUAL_TX_OVERRIDES && (MANUAL_TX_OVERRIDES[txKey] || MANUAL_TX_OVERRIDES[txKeyAlt])) {
+        r.categoria = MANUAL_TX_OVERRIDES[txKey] || MANUAL_TX_OVERRIDES[txKeyAlt];
+        return r;
+      }
+      
+      // 1. Regras dispostas pelo usuário na aba "Categorias e Regras"
+      let ruleCatName = null;
+      if (GLOBAL_RULES && Array.isArray(GLOBAL_RULES)) {
         const matchedRule = GLOBAL_RULES.find(rule => {
           const p = (rule.pattern || '').trim().toUpperCase();
           return p && (rawDesc.includes(p) || normDesc.includes(p));
         });
         if (matchedRule) {
-          const catObj = GLOBAL_CATEGORIES.find(c => c.id == matchedRule.categoryId);
-          if (catObj) r.categoria = catObj.name;
+          if (matchedRule.categoryId) {
+            const catObj = GLOBAL_CATEGORIES.find(c => c.id == matchedRule.categoryId);
+            if (catObj) ruleCatName = catObj.name;
+          }
+          if (!ruleCatName && matchedRule.categoria) {
+            ruleCatName = matchedRule.categoria;
+          }
         }
+      }
+
+      if (ruleCatName) {
+        r.categoria = ruleCatName;
+      } else if (CATEGORY_OVERRIDES[rawDesc]) {
+        r.categoria = CATEGORY_OVERRIDES[rawDesc];
+      } else if (CATEGORY_OVERRIDES[normDesc]) {
+        r.categoria = CATEGORY_OVERRIDES[normDesc];
       }
       return r;
     });
@@ -2253,8 +2356,15 @@ function openAddCategoryModal(macroProfile) {
   }
 
   function renderTransactions(rows) {
+    const rawRows = (rows || []).map((r, idx) => {
+      if (!r.id && !r._id) {
+        r.id = 'tx_' + (r.rowIndex ? ('row_' + r.rowIndex) : (idx + '_' + Math.random().toString(36).substr(2, 6)));
+      }
+      r._id = r.id || r._id;
+      return r;
+    });
     // Overwrite categories matching overrides across all months
-    currentLoadedTransactions = applyCategoryOverrides(rows || []);
+    currentLoadedTransactions = applyCategoryOverrides(rawRows);
     
     // Update the dropdown menu in the category column header
     updateCategoryFilterDropdown();
@@ -2406,13 +2516,27 @@ function openAddCategoryModal(macroProfile) {
       const valClass = row.tipo === 'Entrada' ? 'text-success' : 'text-gray-900 dark:text-white';
       const valPrefix = row.tipo === 'Entrada' ? '+ ' : '- ';
       const categoryColor = getCategoryColor(row.categoria);
+      const rowId = row._id || row.id || ('tx_' + Math.random().toString(36).substr(2, 6));
 
       tbody.append(`
         <tr class="hover:bg-gray-50 dark:hover:!bg-slate-700/50 transition-colors group">
           <td class="p-4 text-gray-500 dark:text-slate-500 align-middle whitespace-nowrap">${row.origem || '-'}</td>
           <td class="p-4 font-medium text-gray-900 dark:text-white align-middle max-w-xs break-words">${row.descricao}</td>
-          <td class="p-4 align-middle max-w-[220px]">
-            <span class="inline-block max-w-[170px] sm:max-w-[200px] px-2.5 py-1.5 ${categoryColor} rounded-md text-xs font-medium whitespace-normal break-words leading-snug text-left shadow-2xs">${row.categoria || 'Sem categoria'}</span>
+          <td class="p-4 align-middle max-w-[220px] td-categoria-cell cursor-pointer">
+            <button type="button" 
+              class="btn-edit-tx-cat group/cat inline-flex items-center justify-between gap-1.5 max-w-[185px] sm:max-w-[210px] px-2.5 py-1.5 ${categoryColor} rounded-md text-xs font-medium whitespace-normal break-words leading-snug text-left shadow-2xs hover:shadow hover:ring-2 hover:ring-primary/40 active:scale-95 transition-all cursor-pointer select-none"
+              data-tx-id="${rowId}"
+              data-row-index="${row.rowIndex || ''}"
+              data-categoria="${escapeHtml(row.categoria || '')}"
+              data-descricao="${escapeHtml(row.descricao || '')}"
+              data-origem="${escapeHtml(row.origem || '')}"
+              data-tipo="${row.tipo || ''}"
+              data-valor="${row.valor || 0}"
+              data-data="${row.data || ''}"
+              title="Clique para alterar a categoria desta transação">
+              <span class="cat-label truncate">${row.categoria || 'Sem categoria'}</span>
+              <i class="fa-solid fa-chevron-down text-[9px] opacity-40 group-hover/cat:opacity-100 group-hover/cat:text-primary transition-opacity shrink-0"></i>
+            </button>
           </td>
           <td class="p-4 text-gray-500 dark:text-slate-500 text-xs uppercase align-middle whitespace-nowrap">${row.tipo}</td>
           <td class="p-4 text-right ${valClass} font-medium align-middle whitespace-nowrap">${valPrefix}${formatCurrency(row.valor)}</td>
@@ -2424,16 +2548,515 @@ function openAddCategoryModal(macroProfile) {
 
   function getCategoryColor(cat) {
     switch(cat) {
-      case 'Alimentação': return 'bg-orange-50 text-orange-700 border border-orange-100';
-      case 'Transporte': return 'bg-blue-50 text-blue-700 border border-blue-100';
-      case 'Moradia': return 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-100 dark:border-purple-800';
-      case 'Lazer': return 'bg-pink-50 text-pink-700 border border-pink-100';
-      case 'Saúde': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-      case 'Renda': return 'bg-success/10 text-success border border-success/20';
-      case 'Transferência': return 'bg-gray-100 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-slate-700';
-      default: return 'bg-gray-100 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-slate-700';
+      case 'Alimentação': return 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60';
+      case 'Transporte': return 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60';
+      case 'Moradia': return 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800';
+      case 'Lazer': return 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60';
+      case 'Saúde': return 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60';
+      case 'Renda':
+      case 'Salário': return 'bg-success/10 text-success border border-success/20';
+      case 'Transferência': return 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-slate-700';
+      case 'Viagem': return 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60';
+      case 'EDILSON': return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60';
+      default: return 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-slate-700';
     }
   }
+
+  function showRefreshToast(message) {
+    $('#toast-refresh-feedback').remove();
+    const toast = $(`
+      <div id="toast-refresh-feedback" class="fixed bottom-6 right-6 z-50 bg-gray-900/95 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-sm font-medium border border-gray-700 pointer-events-none transition-all duration-300">
+        <i class="fa-solid fa-circle-check text-emerald-400 text-base"></i>
+        <span>${message}</span>
+      </div>
+    `);
+    $('body').append(toast);
+    setTimeout(() => {
+      toast.fadeOut(400, function() { $(this).remove(); });
+    }, 3500);
+  }
+
+  function refreshTransactionsAndRules(showFeedback = true) {
+    const $btn = $('#btn-refresh-transactions');
+    const $icon = $btn.find('i');
+    $btn.prop('disabled', true).addClass('opacity-75');
+    $icon.addClass('fa-spin');
+    
+    // Invalida todos os caches da aplicação para garantir dados frescos
+    if (typeof invalidateCache === 'function') {
+      invalidateCache();
+    }
+    
+    // 1. Garante que as regras mais recentes do localStorage estão sincronizadas em GLOBAL_RULES
+    try {
+      const savedRules = localStorage.getItem('finance_user_rules');
+      if (savedRules) {
+        const parsed = JSON.parse(savedRules);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          GLOBAL_RULES = parsed;
+        }
+      }
+    } catch(e) {
+      console.warn("Erro ao ler regras:", e);
+    }
+
+    // 2. Aplica regras aos dados mockados em ambiente standalone/preview
+    function applyMockRules() {
+      if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' && Array.isArray(GLOBAL_MOCK_TRANSACTIONS)) {
+        GLOBAL_MOCK_TRANSACTIONS.forEach(t => {
+          const rawDesc = String(t.descricao || '').trim().toUpperCase();
+          const normDesc = normalizeDescription(t.descricao).toUpperCase();
+          const matchedRule = GLOBAL_RULES.find(rule => {
+            const p = (rule.pattern || '').trim().toUpperCase();
+            return p && (rawDesc.includes(p) || normDesc.includes(p));
+          });
+          if (matchedRule) {
+            let catName = null;
+            if (matchedRule.categoryId) {
+              const catObj = GLOBAL_CATEGORIES.find(c => c.id == matchedRule.categoryId);
+              if (catObj) catName = catObj.name;
+            }
+            if (!catName && matchedRule.categoria) {
+              catName = matchedRule.categoria;
+            }
+            if (catName) {
+              t.categoria = catName;
+            }
+          }
+        });
+      }
+    }
+
+    function completeRefresh() {
+      // Recarrega lista de transações com as regras atualizadas
+      loadTransactions();
+      
+      // Atualiza dropdown de filtro de categoria se disponível
+      if (typeof updateCategoryFilterDropdown === 'function') {
+        updateCategoryFilterDropdown();
+      }
+      
+      // Atualiza listas da aba "Categorias e Regras"
+      renderRulesList();
+      renderCategoriesList();
+      
+      // Atualiza matriz de planejamento anual e dashboard
+      if (typeof loadPlanning === 'function') {
+        loadPlanning();
+      }
+      if (typeof loadDashboard === 'function') {
+        loadDashboard();
+      }
+      
+      setTimeout(function() {
+        $btn.prop('disabled', false).removeClass('opacity-75');
+        $icon.removeClass('fa-spin');
+        if (showFeedback) {
+          showRefreshToast("Transações atualizadas e novas regras aplicadas com sucesso!");
+        }
+      }, 350);
+    }
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      // 1. Busca regras do backend se disponíveis e atualiza na planilha
+      google.script.run
+        .withSuccessHandler(function(backendRules) {
+          if (backendRules && Array.isArray(backendRules)) {
+            backendRules.forEach(br => {
+              const pat = String(br.pattern || '').trim().toUpperCase();
+              if (!pat) return;
+              let existing = GLOBAL_RULES.find(r => (r.pattern || '').toUpperCase() === pat);
+              let cat = GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === String(br.categoria || '').toLowerCase());
+              let catId = cat ? cat.id : (GLOBAL_CATEGORIES[0] ? GLOBAL_CATEGORIES[0].id : 1);
+              if (existing) {
+                if (cat) existing.categoryId = cat.id;
+                if (br.clean) existing.clean = br.clean;
+              } else {
+                GLOBAL_RULES.push({
+                  id: Date.now() + Math.random(),
+                  pattern: pat,
+                  clean: br.clean || br.estabelecimento || pat,
+                  categoryId: catId
+                });
+              }
+            });
+            saveRulesToStorage();
+          }
+
+          // 2. Aplica as novas regras diretamente nas transações da planilha
+          if (typeof google.script.run.applyUserRulesToTransactionsBackend === 'function') {
+            google.script.run
+              .withSuccessHandler(function() {
+                completeRefresh();
+              })
+              .withFailureHandler(function() {
+                completeRefresh();
+              })
+              .applyUserRulesToTransactionsBackend();
+          } else {
+            completeRefresh();
+          }
+        })
+        .withFailureHandler(function() {
+          completeRefresh();
+        })
+        .getUserRules();
+    } else {
+      // Standalone Preview Mode
+      applyMockRules();
+      setTimeout(function() {
+        completeRefresh();
+      }, 350);
+    }
+  }
+
+  $(document).on('click', '#btn-refresh-transactions', function(e) {
+    e.preventDefault();
+    refreshTransactionsAndRules(true);
+  });
+
+  // ==========================================
+  // TRANSACTION CATEGORY PICKER & ORIGIN SYNC
+  // ==========================================
+  let currentEditingTx = null;
+
+  function openChangeTransactionCategoryModal(txData) {
+    currentEditingTx = txData;
+
+    // Ensure modal sits on top of all DOM trees
+    if ($('#modal-tx-change-category').length && $('#modal-tx-change-category').parent().is('#transactions-page')) {
+      $('body').append($('#modal-tx-change-category'));
+    }
+
+    // Populate transaction summary card in modal
+    $('#tx-cat-modal-origem').text(txData.origem || 'Origem não informada');
+    $('#tx-cat-modal-desc').text(txData.descricao || 'Sem descrição');
+    
+    const valClass = txData.tipo === 'Entrada' ? 'text-success' : 'text-gray-900 dark:text-white';
+    const valPrefix = txData.tipo === 'Entrada' ? '+ ' : '- ';
+    $('#tx-cat-modal-val')
+      .attr('class', `font-bold text-sm ${valClass}`)
+      .text(valPrefix + formatCurrency(txData.valor));
+
+    let displayDate = txData.data || '';
+    if (displayDate.includes('-')) {
+      const parts = displayDate.split('-');
+      if (parts.length === 3) displayDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    $('#tx-cat-modal-date').text(displayDate);
+
+    const currentCat = txData.categoria || '';
+    const badgeColor = getCategoryColor(currentCat);
+    $('#tx-cat-modal-current-badge')
+      .attr('class', `px-2 py-0.5 rounded text-[11px] font-medium ${badgeColor}`)
+      .text(currentCat || 'Sem categoria');
+
+    // Reset search & options
+    $('#tx-cat-search-filter').val('');
+    $('#tx-cat-modal-apply-all').prop('checked', false);
+
+    // Populate options
+    renderTxCategoryOptionsList('');
+
+    // Display modal
+    $('#modal-tx-change-category').removeClass('hidden');
+    setTimeout(() => {
+      $('#tx-cat-search-filter').focus();
+    }, 100);
+  }
+
+  function renderTxCategoryOptionsList(query) {
+    const $container = $('#tx-cat-modal-options-list');
+    $container.empty();
+
+    query = (query || '').trim().toLowerCase();
+    const currentCat = currentEditingTx ? String(currentEditingTx.categoria || '').trim() : '';
+
+    // 1. "Sem categoria / Revisar" option
+    const isUncatSelected = !currentCat || currentCat.toLowerCase() === 'revisar' || currentCat.toLowerCase() === 'sem categoria';
+    if (!query || 'sem categoria'.includes(query) || 'revisar'.includes(query)) {
+      $container.append(`
+        <button type="button" 
+          class="btn-select-tx-category w-full text-left px-3 py-2 rounded-xl transition-all flex items-center justify-between group/item border ${isUncatSelected ? 'bg-blue-50/80 dark:bg-blue-900/30 border-primary/50 text-primary dark:text-blue-400 font-bold' : 'hover:bg-gray-100 dark:hover:bg-slate-800 border-transparent text-gray-700 dark:text-slate-300'}"
+          data-category="">
+          <div class="flex items-center space-x-2.5 truncate">
+            <span class="w-2.5 h-2.5 rounded-full bg-gray-400 dark:bg-slate-500 shrink-0"></span>
+            <span class="truncate text-xs">Sem categoria / Revisar</span>
+          </div>
+          ${isUncatSelected ? '<i class="fa-solid fa-check text-xs text-primary shrink-0 ml-2"></i>' : ''}
+        </button>
+      `);
+    }
+
+    // 2. All available categories
+    let matchingCats = (GLOBAL_CATEGORIES || []).filter(c => {
+      if (!query) return true;
+      const nameMatch = String(c.name || '').toLowerCase().includes(query);
+      const profMatch = String(c.profile || '').toLowerCase().includes(query);
+      return nameMatch || profMatch;
+    });
+
+    // Sort alphabetically by name
+    matchingCats.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+
+    matchingCats.forEach(cat => {
+      const isSelected = currentCat && currentCat.toLowerCase() === String(cat.name || '').trim().toLowerCase();
+      const colorClass = getCategoryColor(cat.name);
+      
+      $container.append(`
+        <button type="button" 
+          class="btn-select-tx-category w-full text-left px-3 py-2 rounded-xl transition-all flex items-center justify-between group/item border ${isSelected ? 'bg-blue-50/80 dark:bg-blue-900/30 border-primary/50 text-primary dark:text-blue-400 font-bold' : 'hover:bg-gray-100 dark:hover:bg-slate-800 border-transparent text-gray-700 dark:text-slate-300'}"
+          data-category="${escapeHtml(cat.name)}">
+          <div class="flex items-center space-x-2.5 truncate">
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${colorClass} shrink-0">${cat.name}</span>
+            <span class="text-[10px] text-gray-400 dark:text-slate-500 truncate">${cat.profile || ''}</span>
+          </div>
+          ${isSelected ? '<i class="fa-solid fa-check text-xs text-primary shrink-0 ml-2"></i>' : ''}
+        </button>
+      `);
+    });
+
+    if (matchingCats.length === 0 && query && !('sem categoria'.includes(query))) {
+      $container.append(`
+        <div class="p-4 text-center text-xs text-gray-500 dark:text-slate-400">
+          <p>Nenhuma categoria existente para "<strong>${escapeHtml(query)}</strong>".</p>
+          <button type="button" class="btn-create-typed-cat mt-2 text-primary hover:underline font-semibold flex items-center justify-center mx-auto gap-1" data-name="${escapeHtml(query)}">
+            <i class="fa-solid fa-plus text-[10px]"></i> Criar "${escapeHtml(query)}"
+          </button>
+        </div>
+      `);
+    }
+  }
+
+  function handleSaveTransactionCategory(newCategory, isBulk) {
+    if (!currentEditingTx) return;
+
+    const tx = { ...currentEditingTx };
+    const rowId = tx.txId;
+    const rowIndex = tx.rowIndex;
+    const desc = tx.descricao;
+    const val = tx.valor;
+    const dataStr = tx.data;
+    const origem = tx.origem;
+    const tipo = tx.tipo;
+
+    // Show instant UI feedback in table
+    const $targetBtn = $(`button.btn-edit-tx-cat[data-tx-id="${rowId}"]`);
+    $targetBtn.prop('disabled', true).addClass('opacity-75');
+    $targetBtn.html('<i class="fa-solid fa-circle-notch fa-spin text-primary text-[10px]"></i> <span class="text-[11px] ml-1">Salvando...</span>');
+
+    // Close modal
+    $('#modal-tx-change-category').addClass('hidden');
+
+    function applySuccessLocally() {
+      // 1. Update in currentLoadedTransactions
+      currentLoadedTransactions.forEach(t => {
+        if (t._id === rowId || t.id === rowId || (t.descricao === desc && t.valor == val && t.data === dataStr)) {
+          t.categoria = newCategory;
+        } else if (isBulk && String(t.descricao || '').trim().toLowerCase() === String(desc || '').trim().toLowerCase()) {
+          t.categoria = newCategory;
+        }
+      });
+
+      // 2. Update MANUAL_TX_OVERRIDES
+      const txKey = `${dataStr}_${desc}_${val}_${origem || ''}`;
+      const txKeyAlt = `${dataStr}_${val}_${String(desc || '').trim().toUpperCase()}`;
+      MANUAL_TX_OVERRIDES[txKey] = newCategory;
+      MANUAL_TX_OVERRIDES[txKeyAlt] = newCategory;
+      saveManualTxOverrides();
+
+      // 3. If bulk, update CATEGORY_OVERRIDES
+      if (isBulk) {
+        const rawDesc = String(desc || '').trim().toUpperCase();
+        const normDesc = normalizeDescription(desc).toUpperCase();
+        CATEGORY_OVERRIDES[rawDesc] = newCategory;
+        CATEGORY_OVERRIDES[normDesc] = newCategory;
+        saveCategoryOverrides();
+      }
+
+      // 4. Update in mock storage (persists permanently in preview/mock)
+      if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' && Array.isArray(GLOBAL_MOCK_TRANSACTIONS)) {
+        GLOBAL_MOCK_TRANSACTIONS.forEach(t => {
+          const matchSingle = (t.id && t.id === rowId) || 
+                              (String(t.descricao || '').trim().toLowerCase() === String(desc || '').trim().toLowerCase() && 
+                               Math.abs((parseFloat(t.valor) || 0) - (parseFloat(val) || 0)) < 0.01 && 
+                               (!dataStr || String(t.data) === String(dataStr)));
+          const matchBulk = isBulk && String(t.descricao || '').trim().toLowerCase() === String(desc || '').trim().toLowerCase();
+          
+          if (matchSingle || matchBulk) {
+            t.categoria = newCategory;
+          }
+        });
+        GLOBAL_MOCK_BACKUP = JSON.stringify(GLOBAL_MOCK_TRANSACTIONS);
+        saveMockTransactionsToStorage();
+      }
+
+      // 5. Invalidate caches so planning and dashboard catch up
+      if (typeof invalidateCache === 'function') {
+        invalidateCache();
+      }
+
+      // 6. Update UI
+      if (isBulk) {
+        applySortAndFilterTransactions();
+      } else {
+        const colorClass = getCategoryColor(newCategory);
+        $targetBtn
+          .prop('disabled', false)
+          .removeClass('opacity-75')
+          .attr('class', `btn-edit-tx-cat group/cat inline-flex items-center justify-between gap-1.5 max-w-[185px] sm:max-w-[210px] px-2.5 py-1.5 ${colorClass} rounded-md text-xs font-medium whitespace-normal break-words leading-snug text-left shadow-2xs hover:shadow hover:ring-2 hover:ring-primary/40 active:scale-95 transition-all cursor-pointer select-none`)
+          .attr('data-categoria', newCategory || '')
+          .html(`
+            <span class="cat-label truncate">${newCategory || 'Sem categoria'}</span>
+            <i class="fa-solid fa-chevron-down text-[9px] opacity-40 group-hover/cat:opacity-100 group-hover/cat:text-primary transition-opacity shrink-0"></i>
+          `);
+      }
+
+      // 7. Update dropdown filter counts
+      updateCategoryFilterDropdown();
+
+      // 8. Toast feedback
+      const successMsg = isBulk
+        ? `Categoria "${newCategory || 'Sem categoria'}" aplicada a todas as transações de "${desc}" na origem!`
+        : `Categoria da transação alterada para "${newCategory || 'Sem categoria'}" na origem com sucesso!`;
+      showRefreshToast(successMsg);
+    }
+
+    // Google Apps Script Backend Persistence
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      if (isBulk) {
+        google.script.run
+          .withSuccessHandler(function() {
+            applySuccessLocally();
+          })
+          .withFailureHandler(function(err) {
+            console.error("Erro ao atualizar categoria na planilha:", err);
+            applySuccessLocally();
+            showRefreshToast("Atualizado localmente. Verifique a conexão com a planilha.");
+          })
+          .updateAllMatchingTransactionsCategory(desc, newCategory);
+      } else {
+        google.script.run
+          .withSuccessHandler(function() {
+            applySuccessLocally();
+          })
+          .withFailureHandler(function(err) {
+            console.error("Erro ao atualizar categoria na planilha:", err);
+            applySuccessLocally();
+            showRefreshToast("Atualizado localmente. Verifique a conexão com a planilha.");
+          })
+          .updateSingleTransactionCategory(rowIndex, newCategory, {
+            descricao: desc,
+            valor: val,
+            data: dataStr,
+            origem: origem,
+            tipo: tipo
+          });
+      }
+    } else {
+      // Mock / Preview Mode
+      setTimeout(() => {
+        applySuccessLocally();
+      }, 200);
+    }
+  }
+
+  // Event Delegations for Category Modal & Table Interactions
+  $(document).on('click', '.btn-edit-tx-cat', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const $btn = $(this);
+    const txData = {
+      txId: $btn.data('tx-id') || ('tx_' + Math.random().toString(36).substr(2, 6)),
+      rowIndex: parseInt($btn.data('row-index'), 10) || null,
+      categoria: $btn.data('categoria') || '',
+      descricao: $btn.data('descricao') || '',
+      origem: $btn.data('origem') || '',
+      tipo: $btn.data('tipo') || '',
+      valor: parseFloat($btn.data('valor')) || 0,
+      data: String($btn.data('data') || '')
+    };
+    openChangeTransactionCategoryModal(txData);
+  });
+
+  $(document).on('click', '.td-categoria-cell', function(e) {
+    if ($(e.target).closest('.btn-edit-tx-cat').length === 0) {
+      $(this).find('.btn-edit-tx-cat').trigger('click');
+    }
+  });
+
+  $(document).on('input', '#tx-cat-search-filter', function() {
+    renderTxCategoryOptionsList($(this).val());
+  });
+
+  $(document).on('click', '.btn-select-tx-category', function(e) {
+    e.preventDefault();
+    const newCat = $(this).data('category');
+    const isBulk = $('#tx-cat-modal-apply-all').is(':checked');
+    handleSaveTransactionCategory(newCat, isBulk);
+  });
+
+  $(document).on('click', '.btn-create-typed-cat', function(e) {
+    e.preventDefault();
+    const catName = $(this).data('name');
+    if (!catName) return;
+    const cleanName = String(catName).trim();
+    let exists = GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+    if (!exists) {
+      const isEntrada = currentEditingTx && currentEditingTx.tipo === 'Entrada';
+      const newCatObj = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        name: cleanName,
+        profile: isEntrada ? 'Receita Fixa' : 'Despesa Discricionária'
+      };
+      GLOBAL_CATEGORIES.push(newCatObj);
+      saveCategoriesToStorage();
+      if (typeof renderCategoriesList === 'function') renderCategoriesList();
+      if (typeof populateRuleCategorySelect === 'function') populateRuleCategorySelect();
+    }
+    const isBulk = $('#tx-cat-modal-apply-all').is(':checked');
+    handleSaveTransactionCategory(cleanName, isBulk);
+  });
+
+  $(document).on('click', '#btn-quick-create-cat-modal', function(e) {
+    e.preventDefault();
+    const newName = prompt("Digite o nome da nova categoria:");
+    if (!newName || !newName.trim()) return;
+    const cleanName = newName.trim();
+    let exists = GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+    if (!exists) {
+      const isEntrada = currentEditingTx && currentEditingTx.tipo === 'Entrada';
+      const newCatObj = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        name: cleanName,
+        profile: isEntrada ? 'Receita Fixa' : 'Despesa Discricionária'
+      };
+      GLOBAL_CATEGORIES.push(newCatObj);
+      saveCategoriesToStorage();
+      if (typeof renderCategoriesList === 'function') renderCategoriesList();
+      if (typeof populateRuleCategorySelect === 'function') populateRuleCategorySelect();
+    }
+    renderTxCategoryOptionsList($('#tx-cat-search-filter').val());
+  });
+
+  $(document).on('click', '#btn-close-tx-cat-modal, #btn-cancel-tx-cat-modal', function(e) {
+    e.preventDefault();
+    $('#modal-tx-change-category').addClass('hidden');
+  });
+
+  $(document).on('click', '#modal-tx-change-category', function(e) {
+    if ($(e.target).is('#modal-tx-change-category')) {
+      $('#modal-tx-change-category').addClass('hidden');
+    }
+  });
+
+  $(document).on('keydown', function(e) {
+    if (e.key === 'Escape' && $('#modal-tx-change-category').length && !$('#modal-tx-change-category').hasClass('hidden')) {
+      $('#modal-tx-change-category').addClass('hidden');
+    }
+  });
+
+
 
   function openDeepDrilldown(descLabel) {
     $('#deep-drilldown-modal').removeClass('hidden');
@@ -2891,6 +3514,7 @@ function openAddCategoryModal(macroProfile) {
           categoryId: parseInt(categoryId)
         });
       }
+      saveRulesToStorage();
       $('#rule-modal').addClass('hidden');
       renderRulesList();
     });
@@ -2913,6 +3537,7 @@ function openAddCategoryModal(macroProfile) {
       if(confirm('Tem certeza que deseja excluir esta regra?')) {
         const id = $(this).data('id');
         GLOBAL_RULES = GLOBAL_RULES.filter(r => r.id != id);
+        saveRulesToStorage();
         renderRulesList();
       }
     });

@@ -61,4 +61,24 @@ function saveImportedTransactions(transactions) {
   return true;
 }
 
+function saveAllUserRules(rules) {
+  if (!rules) return true;
+  const sheet = ensureUserRulesSheet();
+  sheet.clear();
+  sheet.appendRow(["Padrão (Normalizado)", "Categoria", "Estabelecimento"]);
+  sheet.getRange("A1:C1").setFontWeight("bold");
+  sheet.setFrozenRows(1);
+  
+  if (rules.length > 0) {
+    const rows = rules.map(r => [
+      String(r.pattern || '').trim().toUpperCase(),
+      r.categoria || '',
+      r.clean || r.estabelecimento || r.pattern || ''
+    ]);
+    sheet.getRange(2, 1, rows.length, 3).setValues(rows);
+  }
+  SpreadsheetApp.flush();
+  return true;
+}
+
 

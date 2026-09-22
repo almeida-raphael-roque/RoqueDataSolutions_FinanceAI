@@ -169,6 +169,7 @@ function getTransactions(year = 'all', month = 'all') {
         categoria = catNameMap[categoria.toLowerCase()];
       }
       rows.push({
+        rowIndex: i + 1,
         origem: String(row[0] || '').trim(),
         descricao: String(row[1] || '').trim(),
         categoria: categoria,
@@ -724,4 +725,139 @@ function exportToCsv() {
     mimeType: "text/csv;charset=UTF-8"
   };
 }
+
+function applyUserRulesToTransactionsBackend() {
+  backupForUndo();
+  const txSheet = getTable('Transactions');
+  const txData = txSheet.getDataRange().getValues();
+  if (txData.length <= 1) return { updatedCount: 0 };
+  
+  let rules = [];
+  try {
+    rules = getUserRules();
+  } catch(e) {
+    rules = [];
+  }
+  if (!rules || rules.length === 0) return { updatedCount: 0 };
+  
+  let cats = [];
+  try { cats = getGlobalCategories(); } catch(e) {}
+  const catNameMap = {};
+  cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
+
+  let updatedCount = 0;
+  for (let i = 1; i < txData.length; i++) {
+    const rawDesc = String(txData[i][1] || '').trim().toUpperCase();
+    const currentCat = String(txData[i][2] || '').trim();
+    
+    for (let r = 0; r < rules.length; r++) {
+      const pattern = String(rules[r].pattern || '').trim().toUpperCase();
+      if (pattern && rawDesc.includes(pattern)) {
+        let targetCat = rules[r].categoria;
+        if (targetCat && catNameMap[targetCat.toLowerCase()]) {
+          targetCat = catNameMap[targetCat.toLowerCase()];
+        }
+        if (targetCat && targetCat !== currentCat) {
+          txData[i][2] = targetCat;
+          updatedCount++;
+        }
+        break;
+      }
+    }
+  }
+
+  if (updatedCount > 0) {
+    txSheet.getRange(1, 1, txData.length, txData[0].length).setValues(txData);
+    SpreadsheetApp.flush();
+  }
+
+  return { updatedCount: updatedCount };
+}
+
+function updateSingleTransactionCategory(rowIndex, newCategory, txDetails) {
+  backupForUndo();
+  const sheet = getTable('Transactions');
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { success: false, message: 'Nenhuma transação encontrada.' };
+
+  let targetRowIndex = -1;
+  const numRows = data.length;
+
+  // 1. Try direct rowIndex if valid and matches description
+  if (rowIndex && rowIndex >= 2 && rowIndex <= numRows) {
+    if (!txDetails || !txDetails.descricao) {
+      targetRowIndex = rowIndex;
+    } else {
+      const targetDesc = String(txDetails.descricao || '').trim().toLowerCase();
+      const currentDesc = String(data[rowIndex - 1][1] || '').trim().toLowerCase();
+      if (currentDesc === targetDesc) {
+        targetRowIndex = rowIndex;
+      }
+    }
+  }
+
+  // 2. Fallback search by description, value and date
+  if (targetRowIndex === -1 && txDetails) {
+    const targetDesc = String(txDetails.descricao || '').trim().toLowerCase();
+    const targetVal = parseValor(txDetails.valor);
+    const targetOrigem = String(txDetails.origem || '').trim().toLowerCase();
+
+    for (let i = numRows - 1; i >= 1; i--) {
+      const rowDesc = String(data[i][1] || '').trim().toLowerCase();
+      const rowVal = parseValor(data[i][4]);
+      const rowOrigem = String(data[i][0] || '').trim().toLowerCase();
+
+      const descMatch = (rowDesc === targetDesc);
+      const valMatch = (isNaN(targetVal) || Math.abs(rowVal - targetVal) < 0.01);
+      const origemMatch = (!targetOrigem || rowOrigem === targetOrigem);
+
+      if (descMatch && valMatch && origemMatch) {
+        targetRowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (targetRowIndex === -1) {
+      for (let i = numRows - 1; i >= 1; i--) {
+        const rowDesc = String(data[i][1] || '').trim().toLowerCase();
+        if (rowDesc === targetDesc) {
+          targetRowIndex = i + 1;
+          break;
+        }
+      }
+    }
+  }
+
+  if (targetRowIndex !== -1) {
+    sheet.getRange(targetRowIndex, 3).setValue(newCategory || ''); // Column 3 is Categoria (C)
+    SpreadsheetApp.flush();
+    return { success: true, rowIndex: targetRowIndex, newCategory: newCategory };
+  }
+
+  return { success: false, message: 'Transação não encontrada na planilha.' };
+}
+
+function updateAllMatchingTransactionsCategory(descricao, newCategory) {
+  backupForUndo();
+  const sheet = getTable('Transactions');
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { updatedCount: 0 };
+
+  const targetDesc = String(descricao || '').trim().toLowerCase();
+  let updatedCount = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1] || '').trim().toLowerCase() === targetDesc) {
+      data[i][2] = newCategory || '';
+      updatedCount++;
+    }
+  }
+
+  if (updatedCount > 0) {
+    sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+    SpreadsheetApp.flush();
+  }
+  return { updatedCount: updatedCount, newCategory: newCategory };
+}
+
+
 

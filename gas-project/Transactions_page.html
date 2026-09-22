@@ -98,6 +98,9 @@
       </div>
 
       <div class="flex items-center gap-2 md:gap-3 flex-wrap justify-end">
+        <button type="button" id="btn-refresh-transactions" class="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-primary px-3.5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm cursor-pointer" title="Buscar atualizações naturais e aplicar as novas regras dispostas em 'Categorias e Regras'">
+          <i class="fa-solid fa-arrows-rotate mr-2 text-primary"></i> <span>Atualizar</span>
+        </button>
         <div class="relative" id="export-dropdown-container">
           <button id="btn-export-toggle" class="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm">
             <i class="fa-solid fa-download mr-2"></i> <span>Exportar</span> <i class="fa-solid fa-chevron-down ml-2 text-xs"></i>
@@ -273,6 +276,86 @@
           Salvar
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal para Alteração de Categoria da Transação Específica -->
+  <div id="modal-tx-change-category" class="hidden fixed inset-0 bg-gray-900/60 dark:bg-black/75 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white dark:bg-[#151928] rounded-2xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-slate-800 overflow-hidden flex flex-col transition-all transform scale-100">
+      
+      <!-- Modal Header -->
+      <div class="p-4 sm:p-5 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-gray-50/70 dark:bg-slate-800/40">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/40 text-primary dark:text-blue-400 flex items-center justify-center text-sm shadow-2xs">
+            <i class="fa-solid fa-tag"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-gray-800 dark:text-white leading-tight">Alterar Categoria</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-400">Atualiza a categoria desta transação diretamente na origem</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-tx-cat-modal" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-4 sm:p-5 space-y-4">
+        <!-- Transaction Detail Summary Card -->
+        <div class="bg-gray-50 dark:bg-[#1b2135] p-3.5 rounded-xl border border-gray-100 dark:border-slate-700/60 text-xs">
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="min-w-0 flex-1">
+              <span class="text-[10px] uppercase font-bold text-gray-400 dark:text-slate-500 tracking-wider" id="tx-cat-modal-origem">Origem</span>
+              <h4 class="font-bold text-gray-900 dark:text-white text-sm truncate" id="tx-cat-modal-desc">Descrição</h4>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="font-bold text-sm" id="tx-cat-modal-val">R$ 0,00</span>
+              <div class="text-[11px] text-gray-400 dark:text-slate-500" id="tx-cat-modal-date">00/00/0000</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 pt-2 border-t border-gray-200/60 dark:border-slate-700/60">
+            <span class="text-gray-500 dark:text-slate-400 text-[11px]">Categoria atual:</span>
+            <span id="tx-cat-modal-current-badge" class="px-2 py-0.5 rounded text-[11px] font-medium bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-300">Sem categoria</span>
+          </div>
+        </div>
+
+        <!-- Search Input -->
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+          <input type="text" id="tx-cat-search-filter" placeholder="Pesquisar categoria..." 
+            class="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-[#121624] text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all">
+        </div>
+
+        <!-- Category Options List -->
+        <div>
+          <label class="block text-[11px] font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+            Selecione a nova categoria:
+          </label>
+          <div class="max-h-56 overflow-y-auto space-y-1 pr-1 custom-scroll" id="tx-cat-modal-options-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Optional: Apply to all with same description -->
+        <div class="pt-2 border-t border-gray-100 dark:border-slate-800">
+          <label class="flex items-start space-x-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer select-none">
+            <input type="checkbox" id="tx-cat-modal-apply-all" class="mt-0.5 rounded border-gray-300 dark:border-slate-700 text-primary focus:ring-primary/40">
+            <span>Aplicar também a todas as outras transações com esta mesma descrição</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/20 flex justify-between items-center">
+        <button type="button" id="btn-quick-create-cat-modal" class="text-xs text-primary hover:text-blue-700 dark:hover:text-blue-400 font-semibold flex items-center gap-1">
+          <i class="fa-solid fa-plus text-[10px]"></i>
+          <span>Nova Categoria</span>
+        </button>
+        <button type="button" id="btn-cancel-tx-cat-modal" class="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+          Cancelar
+        </button>
+      </div>
+
     </div>
   </div>
 </div>
