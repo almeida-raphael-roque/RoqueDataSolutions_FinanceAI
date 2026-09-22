@@ -97,6 +97,9 @@
             <i class="fa-solid fa-chevron-down"></i>
           </button>
         </div>
+        <button id="btn-update-planning-forecast" class="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center shadow-sm h-[34px] cursor-pointer" title="Calcular e atualizar previsões automáticas baseadas no histórico de transações">
+          <i class="fa-solid fa-wand-magic-sparkles mr-2 text-xs"></i> <span>Atualizar Previsão</span>
+        </button>
         <button onclick="openAddCategoryModal()" class="bg-primary hover:bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm h-[34px]">
           <i class="fa-solid fa-plus mr-2"></i> <span>Nova</span>
         </button>
@@ -198,6 +201,90 @@
         <i class="fa-solid fa-check"></i>
         <span>Adicionar</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Gerenciar Previsão da Categoria (Apagar ou Modificar) -->
+<div id="modal-planning-forecast-actions" class="fixed inset-0 z-50 hidden" aria-labelledby="forecast-modal-title" role="dialog" aria-modal="true">
+  <div class="fixed inset-0 bg-gray-900/60 backdrop-blur-xs transition-opacity" id="forecast-modal-backdrop"></div>
+  <div class="fixed inset-0 z-10 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div class="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 overflow-hidden transform transition-all">
+      <!-- Header -->
+      <div class="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-purple-50/70 dark:bg-purple-950/30">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 flex items-center justify-center text-lg font-bold">
+            <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-gray-900 dark:text-white" id="forecast-modal-title">Previsão: Categoria</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-400" id="forecast-modal-subtitle">Setembro a Dezembro de 2026</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-forecast-modal" class="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-5 space-y-4">
+        <div class="bg-gray-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-gray-200/70 dark:border-slate-700/60 flex items-center justify-between">
+          <div>
+            <span class="text-xs text-gray-500 dark:text-slate-400 block font-medium">Valor previsto atual</span>
+            <span class="text-lg font-bold text-purple-600 dark:text-purple-400" id="forecast-modal-current-val">R$ 0,00</span>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 italic">
+            Previsão Estimada
+          </span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            Valor para Previsão (R$)
+          </label>
+          <div class="relative rounded-xl shadow-xs">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-xs font-semibold text-gray-400 dark:text-slate-500">R$</span>
+            <input type="text" id="forecast-modal-input-val" 
+              class="w-full pl-9 pr-3.5 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl text-sm font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all" 
+              placeholder="0,00">
+          </div>
+          <p class="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
+            Você pode modificar o valor para os meses futuros ou cancelar a previsão.
+          </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-2 space-y-2">
+          <button type="button" id="btn-forecast-apply-future" 
+            class="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-[0.99] text-white rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-arrows-split-up-and-left text-xs"></i>
+            <span>Modificar este e todos os próximos meses</span>
+          </button>
+
+          <button type="button" id="btn-forecast-delete-future" 
+            class="w-full py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-trash-can text-xs"></i>
+            <span>Apagar previsão deste e dos próximos meses</span>
+          </button>
+
+          <button type="button" id="btn-forecast-apply-single" 
+            class="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-calendar-day text-[11px]"></i>
+            <span>Modificar apenas este mês</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Footer with secondary link to see transactions -->
+      <div class="px-5 py-3.5 bg-gray-50 dark:bg-slate-800/40 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between">
+        <button type="button" id="btn-forecast-view-txs" class="text-xs text-primary dark:text-blue-400 hover:underline font-medium flex items-center gap-1.5">
+          <i class="fa-solid fa-list-ul text-[10px]"></i>
+          <span>Ver histórico de transações</span>
+        </button>
+        <button type="button" id="btn-forecast-cancel" class="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 font-medium">
+          Fechar
+        </button>
+      </div>
     </div>
   </div>
 </div>

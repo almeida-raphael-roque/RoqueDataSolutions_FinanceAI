@@ -4764,13 +4764,344 @@ $(document).ready(function() {
     }
   }
 
+  // --- ARMAZENAMENTO E CÁLCULO DE PREVISÕES AUTOMÁTICAS ---
+  function getPlanningForecasts() {
+    try {
+      const raw = localStorage.getItem('fin_ally_planning_forecasts');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function savePlanningForecasts(year, forecastsObj) {
+    try {
+      localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecastsObj));
+    } catch (e) {
+      console.error('Erro ao salvar forecasts no localStorage', e);
+    }
+    if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.savePlanningForecastsBackend) {
+      google.script.run
+        .withFailureHandler(function(err) { console.warn('Could not sync forecasts to backend:', err); })
+        .savePlanningForecastsBackend(year, JSON.stringify(forecastsObj));
+    }
+  }
+
+  function updatePlanningForecasts(targetYear) {
+    targetYear = parseInt(targetYear, 10) || currentPlanningYear;
+    
+    const $btn = $('#btn-update-planning-forecast');
+    const originalHtml = $btn.html();
+    $btn.prop('disabled', true).html('<i class="fa-solid fa-circle-notch fa-spin mr-2 text-xs"></i><span>Calculando...</span>');
+
+    setTimeout(() => {
+      try {
+        const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
+        const currentYear = now.getFullYear();
+        const currentMonthNum = (targetYear < currentYear) ? 12 : ((targetYear > currentYear) ? 1 : (now.getMonth() + 1));
+
+        // 1. Obter todas as transações com categoria atualizada
+        let allTxs = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
+          ? currentLoadedTransactions
+          : ((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : []);
+        if (typeof applyCategoryOverrides === 'function') {
+          allTxs = applyCategoryOverrides(allTxs);
+        }
+
+        // Filtrar transações para o ano alvo
+        const yearTxs = allTxs.filter(t => {
+          if (!t.data) return false;
+          const d = parseLocalDateString(t.data);
+          return d && d.getFullYear() === targetYear;
+        });
+
+        // 2. Identificar meses registrados no ano alvo (meses <= currentMonthNum que possuem registros)
+        const recordedMonthSet = new Set();
+        yearTxs.forEach(t => {
+          const d = parseLocalDateString(t.data);
+          if (d) {
+            const m = d.getMonth() + 1;
+            if (targetYear < currentYear || m <= currentMonthNum) {
+              recordedMonthSet.add(m);
+            }
+          }
+        });
+
+        const recordedMonths = Array.from(recordedMonthSet).sort((a, b) => a - b);
+        const N = recordedMonths.length;
+
+        // Critério dinâmico para "maioria dos meses":
+        // Ex: se tem 3 meses de registro, maioria = 2; se tem 4 = 3; se tem 5 = 3; se tem 6 = 4.
+        const majorityThreshold = N > 0 ? (Math.floor(N / 2) + 1) : 1;
+
+        // Meses recentes (últimos 3 meses com registro)
+        const recentMonths = recordedMonths.slice(-3);
+
+        // 3. Agrupar valores por Categoria e Mês
+        const catMonthlyAmounts = {};
+        yearTxs.forEach(t => {
+          if (!t.categoria) return;
+          const cat = String(t.categoria).trim();
+          const d = parseLocalDateString(t.data);
+          if (!d) return;
+          const m = d.getMonth() + 1;
+          const val = Math.abs(parseFloat(t.valor) || 0);
+
+          if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
+          catMonthlyAmounts[cat][m] = (catMonthlyAmounts[cat][m] || 0) + val;
+        });
+
+        // Incluir também categorias globais configuradas no sistema
+        const allCategoryNames = new Set(Object.keys(catMonthlyAmounts));
+        if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES)) {
+          GLOBAL_CATEGORIES.forEach(c => {
+            if (c.name) allCategoryNames.add(c.name.trim());
+          });
+        }
+
+        const forecasts = getPlanningForecasts();
+        if (!forecasts[String(targetYear)]) forecasts[String(targetYear)] = {};
+
+        let qualifiedCount = 0;
+
+        allCategoryNames.forEach(cat => {
+          const amounts = catMonthlyAmounts[cat] || {};
+          // Meses registrados nos quais a categoria teve transação > 0
+          const activeMonthsForCat = recordedMonths.filter(m => (amounts[m] || 0) > 0);
+          const countRecorded = activeMonthsForCat.length;
+          
+          // Contagem de aparições nos últimos 3 meses registrados
+          const countRecent = recentMonths.filter(m => (amounts[m] || 0) > 0).length;
+
+          // Regra A: Veto por inatividade recente
+          // "se por exemplo nos 3 últimos meses essa categoria não teve registros, então ela não deve constar"
+          let isEligible = true;
+          if (recentMonths.length >= 3 && countRecent === 0) {
+            isEligible = false;
+          } else if (countRecorded >= majorityThreshold) {
+            // Regra B: Presente na maioria dos meses
+            isEligible = true;
+          } else if (countRecent >= 2 || (recentMonths.length < 3 && countRecent >= 1)) {
+            // Regra C: Presente recentemente
+            isEligible = true;
+          } else {
+            isEligible = false;
+          }
+
+          if (!isEligible) {
+            // Se já existia previsão automática anterior dessa categoria, remove para não constar mais
+            if (forecasts[String(targetYear)][cat]) {
+              delete forecasts[String(targetYear)][cat];
+            }
+            return;
+          }
+
+          // Categoria qualificada para previsão!
+          qualifiedCount++;
+
+          // Determinar se é Despesa Fixa
+          const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined')
+            ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
+            : null;
+          const isFixed = catObj && (catObj.profile || '').toLowerCase().includes('fixa');
+
+          let forecastValue = 0;
+          if (isFixed) {
+            // "deixe como default as despesas fixas serem previstas com base no valor delas no último mês com registro"
+            if (activeMonthsForCat.length > 0) {
+              const lastActiveM = activeMonthsForCat[activeMonthsForCat.length - 1];
+              forecastValue = amounts[lastActiveM] || 0;
+            } else {
+              forecastValue = 0;
+            }
+          } else {
+            // "o cálculo vai ser a média dessa categoria ao longo dos meses, desconsiderando os outliers para se ter uma previsão acurada"
+            const nonZeroVals = activeMonthsForCat.map(m => amounts[m]).filter(v => v > 0).sort((a, b) => a - b);
+            if (nonZeroVals.length === 0) {
+              forecastValue = 0;
+            } else if (nonZeroVals.length <= 2) {
+              const sum = nonZeroVals.reduce((acc, v) => acc + v, 0);
+              forecastValue = Math.round((sum / nonZeroVals.length) * 100) / 100;
+            } else {
+              // Remoção de Outliers via IQR (Intervalo Interquartil)
+              const q1 = nonZeroVals[Math.floor(nonZeroVals.length * 0.25)];
+              const q3 = nonZeroVals[Math.ceil(nonZeroVals.length * 0.75) - 1];
+              const iqr = q3 - q1;
+              let filteredVals = nonZeroVals;
+              if (iqr > 0) {
+                filteredVals = nonZeroVals.filter(v => v >= (q1 - 1.5 * iqr) && v <= (q3 + 1.5 * iqr));
+              }
+              if (!filteredVals.length) filteredVals = nonZeroVals;
+              const sum = filteredVals.reduce((acc, v) => acc + v, 0);
+              forecastValue = Math.round((sum / filteredVals.length) * 100) / 100;
+            }
+          }
+
+          // Aplicar previsão aos meses:
+          // No mês atual (ex: Setembro):
+          // Se já houve transação real no mês atual -> mantém transações reais (não prevê neste mês).
+          // Se NÃO houve transação real no mês atual -> aplica a previsão (em itálico e roxo)!
+          // Nos meses futuros (m > currentMonthNum): aplica a previsão até Dezembro!
+          const catForecastMonths = {};
+          for (let m = currentMonthNum; m <= 12; m++) {
+            if (m === currentMonthNum) {
+              const hasRealInCurrentMonth = (amounts[currentMonthNum] || 0) > 0;
+              if (!hasRealInCurrentMonth && forecastValue > 0) {
+                catForecastMonths[m] = forecastValue;
+              }
+            } else {
+              if (forecastValue > 0) {
+                catForecastMonths[m] = forecastValue;
+              }
+            }
+          }
+
+          forecasts[String(targetYear)][cat] = {
+            forecastValue: forecastValue,
+            isEligible: true,
+            isFixed: isFixed,
+            months: catForecastMonths,
+            updatedAt: Date.now()
+          };
+        });
+
+        // Salvar previsões no storage
+        savePlanningForecasts(targetYear, forecasts);
+
+        // Recarregar planejamento e atualizar a tabela
+        loadPlanning();
+
+        showRefreshToast(`Previsões atualizadas! ${qualifiedCount} categorias qualificadas e projetadas até Dezembro.`);
+      } catch (err) {
+        console.error('Erro ao atualizar previsões:', err);
+        showRefreshToast('Erro ao calcular previsões. Verifique os dados das transações.');
+      } finally {
+        $btn.prop('disabled', false).html(originalHtml);
+      }
+    }, 300);
+  }
+
+  function modifyForecastAcrossMonths(year, cat, fromMonth, newVal, tipo) {
+    const yStr = String(year);
+    const overrides = getPlanningOverrides();
+    if (!overrides[yStr]) overrides[yStr] = {};
+    if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
+
+    const forecasts = getPlanningForecasts();
+    if (!forecasts[yStr]) forecasts[yStr] = {};
+    if (!forecasts[yStr][cat]) forecasts[yStr][cat] = { forecastValue: newVal, months: {} };
+
+    for (let m = fromMonth; m <= 12; m++) {
+      if (newVal === 0) {
+        // Apagar / Zerar previsão dos próximos meses
+        overrides[yStr][cat][m] = {
+          val: 0,
+          tipo: tipo,
+          isManualOverride: true,
+          isForecast: true,
+          updatedAt: Date.now()
+        };
+        forecasts[yStr][cat].months[m] = 0;
+      } else {
+        // Modificar previsão dos próximos meses
+        overrides[yStr][cat][m] = {
+          val: newVal,
+          tipo: tipo,
+          isManualOverride: true,
+          isForecast: true,
+          updatedAt: Date.now()
+        };
+        forecasts[yStr][cat].months[m] = newVal;
+      }
+    }
+
+    try {
+      localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(overrides));
+      localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts));
+    } catch(e) {}
+
+    loadPlanning();
+
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const startMonthName = months[fromMonth - 1] || `Mês ${fromMonth}`;
+    if (newVal === 0) {
+      showRefreshToast(`Previsões de "${cat}" apagadas de ${startMonthName} até Dezembro.`);
+    } else {
+      showRefreshToast(`Previsões de "${cat}" alteradas para ${formatCurrency(newVal)} de ${startMonthName} até Dezembro.`);
+    }
+  }
+
+  function modifyForecastSingleMonth(year, cat, month, newVal, tipo) {
+    savePlanningOverride(year, cat, month, tipo, newVal);
+    const forecasts = getPlanningForecasts();
+    const yStr = String(year);
+    if (forecasts[yStr] && forecasts[yStr][cat]) {
+      if (!forecasts[yStr][cat].months) forecasts[yStr][cat].months = {};
+      forecasts[yStr][cat].months[month] = newVal;
+      savePlanningForecasts(year, forecasts);
+    }
+    loadPlanning();
+
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const monthName = months[month - 1] || `Mês ${month}`;
+    showRefreshToast(`Previsão de "${cat}" para ${monthName} ajustada para ${formatCurrency(newVal)}.`);
+  }
+
   function applyPlanningOverrides(data) {
     if (!data || !data.year) return;
-    const overrides = getPlanningOverrides();
     const yStr = String(data.year);
+
+    // 1. Aplica Previsões Automáticas Calculadas
+    const forecasts = getPlanningForecasts();
+    const yearFc = forecasts[yStr] || {};
+
+    if (data.incomeCategories) {
+      Object.keys(data.incomeCategories).forEach(cat => {
+        const catFc = yearFc[cat];
+        if (catFc && catFc.months) {
+          for (let m = 1; m <= 12; m++) {
+            if (catFc.months[m] !== undefined) {
+              const fcVal = catFc.months[m];
+              const cell = data.incomeCategories[cat][m - 1];
+              // Só aplica previsão se não houver transação realizada real
+              if (!cell.realized || cell.realized === 0) {
+                cell.total = fcVal;
+                cell.planned = fcVal;
+                cell.isForecast = true;
+              }
+            }
+          }
+        }
+      });
+    }
+
+    if (data.expenseMacros) {
+      ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+        if (data.expenseMacros[macro]) {
+          Object.keys(data.expenseMacros[macro]).forEach(cat => {
+            const catFc = yearFc[cat];
+            if (catFc && catFc.months) {
+              for (let m = 1; m <= 12; m++) {
+                if (catFc.months[m] !== undefined) {
+                  const fcVal = catFc.months[m];
+                  const cell = data.expenseMacros[macro][cat][m - 1];
+                  if (!cell.realized || cell.realized === 0) {
+                    cell.total = fcVal;
+                    cell.planned = fcVal;
+                    cell.isForecast = true;
+                  }
+                }
+              }
+            }
+          });
+        }
+      });
+    }
+
+    // 2. Aplica Overrides Manuais do Usuário (prioridade máxima)
+    const overrides = getPlanningOverrides();
     const yearOv = overrides[yStr] || {};
 
-    // 1. Receitas
     if (data.incomeCategories) {
       Object.keys(data.incomeCategories).forEach(cat => {
         const catOv = yearOv[cat];
@@ -4778,23 +5109,26 @@ $(document).ready(function() {
           for (let m = 1; m <= 12; m++) {
             if (catOv[m] !== undefined) {
               const ov = catOv[m];
-              const isFc = isPlanningMonthForecast(data.year, m);
-              data.incomeCategories[cat][m - 1].total = ov.val;
+              const cell = data.incomeCategories[cat][m - 1];
+              const hasRealized = !!(cell.realized && cell.realized > 0);
+              const isFc = ov.isForecast !== undefined ? ov.isForecast : (!hasRealized && isPlanningMonthForecast(data.year, m));
+              cell.total = ov.val;
               if (isFc) {
-                data.incomeCategories[cat][m - 1].planned = ov.val;
-                data.incomeCategories[cat][m - 1].realized = 0;
+                cell.planned = ov.val;
+                cell.realized = 0;
+                cell.isForecast = true;
               } else {
-                data.incomeCategories[cat][m - 1].realized = ov.val;
-                data.incomeCategories[cat][m - 1].planned = 0;
+                cell.realized = ov.val;
+                cell.planned = 0;
+                cell.isForecast = false;
               }
-              data.incomeCategories[cat][m - 1].isManualOverride = true;
+              cell.isManualOverride = true;
             }
           }
         }
       });
     }
 
-    // 2. Despesas
     if (data.expenseMacros) {
       ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
         if (data.expenseMacros[macro]) {
@@ -4804,16 +5138,20 @@ $(document).ready(function() {
               for (let m = 1; m <= 12; m++) {
                 if (catOv[m] !== undefined) {
                   const ov = catOv[m];
-                  const isFc = isPlanningMonthForecast(data.year, m);
-                  data.expenseMacros[macro][cat][m - 1].total = ov.val;
+                  const cell = data.expenseMacros[macro][cat][m - 1];
+                  const hasRealized = !!(cell.realized && cell.realized > 0);
+                  const isFc = ov.isForecast !== undefined ? ov.isForecast : (!hasRealized && isPlanningMonthForecast(data.year, m));
+                  cell.total = ov.val;
                   if (isFc) {
-                    data.expenseMacros[macro][cat][m - 1].planned = ov.val;
-                    data.expenseMacros[macro][cat][m - 1].realized = 0;
+                    cell.planned = ov.val;
+                    cell.realized = 0;
+                    cell.isForecast = true;
                   } else {
-                    data.expenseMacros[macro][cat][m - 1].realized = ov.val;
-                    data.expenseMacros[macro][cat][m - 1].planned = 0;
+                    cell.realized = ov.val;
+                    cell.planned = 0;
+                    cell.isForecast = false;
                   }
-                  data.expenseMacros[macro][cat][m - 1].isManualOverride = true;
+                  cell.isManualOverride = true;
                 }
               }
             }
@@ -4848,18 +5186,31 @@ $(document).ready(function() {
       data.monthlyTotals[i].balance = inc - exp;
     }
 
-    // 4. Recalcula summary
+    // 4. Recalcula summary considerando realizado vs previsto
     let incReal = 0, incPlan = 0, expReal = 0, expPlan = 0;
-    data.monthlyTotals.forEach((m, idx) => {
-      const isFc = isPlanningMonthForecast(data.year, idx + 1);
-      if (isFc) {
-        incPlan += m.income;
-        expPlan += m.expense;
-      } else {
-        incReal += m.income;
-        expReal += m.expense;
-      }
-    });
+    if (data.incomeCategories) {
+      Object.keys(data.incomeCategories).forEach(cat => {
+        data.incomeCategories[cat].forEach((m, idx) => {
+          const isCellFc = m.isForecast || (!m.realized && isPlanningMonthForecast(data.year, idx + 1));
+          if (isCellFc) incPlan += (m.total || 0);
+          else incReal += (m.total || 0);
+        });
+      });
+    }
+    if (data.expenseMacros) {
+      ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+        if (data.expenseMacros[macro]) {
+          Object.keys(data.expenseMacros[macro]).forEach(cat => {
+            data.expenseMacros[macro][cat].forEach((m, idx) => {
+              const isCellFc = m.isForecast || (!m.realized && isPlanningMonthForecast(data.year, idx + 1));
+              if (isCellFc) expPlan += (m.total || 0);
+              else expReal += (m.total || 0);
+            });
+          });
+        }
+      });
+    }
+
     data.summary = {
       incomeRealized: incReal,
       incomePlanned: incPlan,
@@ -4884,22 +5235,24 @@ $(document).ready(function() {
   }
 
   function renderCategoryMonthCell(valObj, cat, monthNum, tipo, year) {
-    const isForecast = isPlanningMonthForecast(year, monthNum);
+    const isGlobalForecastMonth = isPlanningMonthForecast(year, monthNum);
+    const hasRealized = !!(valObj && valObj.realized > 0);
+    // Célula é considerada previsão se:
+    // 1) Marcada com isForecast
+    // 2) OU não tem transações realizadas e (mês é futuro ou tem valor previsto)
+    const isForecast = (valObj && valObj.isForecast) || (!hasRealized && (isGlobalForecastMonth || (valObj && valObj.planned > 0)));
     const isManual = !!(valObj && valObj.isManualOverride);
     
     let textClasses = '';
     if (isManual) {
-      // Tudo o que eu alterar manualmente na célula (e já existir um valor ali) deixe em negrito
       if (isForecast) {
-        // sempre que eu escrever nos meses pra frente é previsto, então as letras devem estar em itálico
         textClasses = 'font-bold italic text-purple-600 dark:text-purple-400';
       } else {
-        // sempre que eu escrever antes é normal
         textClasses = 'font-bold text-gray-900 dark:text-white';
       }
     } else {
       if (isForecast) {
-        textClasses = 'italic text-purple-600/90 dark:text-purple-400/90 font-medium';
+        textClasses = 'italic text-purple-600 dark:text-purple-400 font-medium';
       } else {
         textClasses = 'text-gray-700 dark:text-gray-300 font-normal';
       }
@@ -4909,9 +5262,14 @@ $(document).ready(function() {
     const rawVal = (valObj && valObj.total !== undefined) ? valObj.total : 0;
     const encodedCat = encodeURIComponent(cat);
 
-    const titleTooltip = isManual 
-      ? `Valor editado manualmente: ${formatCurrency(rawVal)}\n• 1 clique: ver transações\n• 2 cliques: editar valor\n• Botão direito: restaurar cálculo original`
-      : `• 1 clique: ver transações (descrição, categoria, valor, data)\n• 2 cliques: editar valor diretamente`;
+    let titleTooltip = '';
+    if (isForecast) {
+      titleTooltip = `Previsão: ${formatCurrency(rawVal)}\n• 1 clique: gerenciar previsão (apagar ou modificar para os próximos meses)\n• 2 cliques: editar valor`;
+    } else if (isManual) { 
+      titleTooltip = `Valor editado manualmente: ${formatCurrency(rawVal)}\n• 1 clique: ver transações\n• 2 cliques: editar valor\n• Botão direito: restaurar cálculo original`;
+    } else {
+      titleTooltip = `• 1 clique: ver transações (descrição, categoria, valor, data)\n• 2 cliques: editar valor diretamente`;
+    }
 
     return `<td class="px-2 py-1.5 text-center planning-cell-action cursor-pointer hover:bg-blue-50/70 dark:hover:bg-slate-700/60 transition-colors relative group/cell"
                 data-cat="${encodedCat}"
@@ -4920,6 +5278,7 @@ $(document).ready(function() {
                 data-year="${year}"
                 data-raw-value="${rawVal}"
                 data-is-manual="${isManual ? '1' : '0'}"
+                data-is-forecast="${isForecast ? '1' : '0'}"
                 title="${titleTooltip}">
               <span class="cell-val inline-block w-full py-0.5 select-none ${textClasses}">${formatted}</span>
             </td>`;
@@ -5261,13 +5620,22 @@ $(document).ready(function() {
       planningCellClickTimer = null;
     }
 
-    // 1 clique: abre o detalhamento (gaveta) exibindo descrição, categoria, valor e data
+    // 1 clique:
+    // Se a célula for uma previsão estimada (data-is-forecast="1"): abre o modal de opções de previsão (apagar ou modificar para os próximos meses)
+    // Se for uma célula normal com transações reais: abre o detalhamento (gaveta)
     planningCellClickTimer = setTimeout(function() {
       planningCellClickTimer = null;
       const cat = decodeURIComponent($td.attr('data-cat') || '');
       const month = parseInt($td.attr('data-month'), 10);
       const tipo = $td.attr('data-tipo');
-      openPlanningDrawer(cat, month, currentPlanningYear, tipo);
+      const isForecast = $td.attr('data-is-forecast') === '1';
+      const rawVal = parseFloat($td.attr('data-raw-value')) || 0;
+
+      if (isForecast) {
+        openPlanningForecastActionModal(cat, month, currentPlanningYear, tipo, rawVal);
+      } else {
+        openPlanningDrawer(cat, month, currentPlanningYear, tipo);
+      }
     }, 240);
   });
 
@@ -5422,6 +5790,79 @@ $(document).ready(function() {
     }, 300);
   });
 
+  // --- MODAL DE AÇÃO DE PREVISÃO (APAGAR / MODIFICAR PARA O RESTANTE DO ANO) ---
+  let currentForecastModalData = null;
+
+  function openPlanningForecastActionModal(cat, month, year, tipo, currentVal) {
+    currentForecastModalData = { cat, month, year, tipo, currentVal };
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const monthName = monthNames[month - 1] || `Mês ${month}`;
+    
+    $('#forecast-modal-title').text(`Previsão: ${cat}`);
+    $('#forecast-modal-subtitle').text(`${monthName} a Dezembro de ${year}`);
+    $('#forecast-modal-current-val').text(formatCurrency(currentVal));
+    $('#forecast-modal-input-val').val(currentVal ? currentVal.toFixed(2).replace('.', ',') : '');
+
+    $('#modal-planning-forecast-actions').removeClass('hidden');
+    setTimeout(() => {
+      $('#forecast-modal-input-val').focus().select();
+    }, 100);
+  }
+
+  function closePlanningForecastActionModal() {
+    $('#modal-planning-forecast-actions').addClass('hidden');
+    currentForecastModalData = null;
+  }
+
+  $('#btn-close-forecast-modal, #btn-forecast-cancel, #forecast-modal-backdrop').on('click', function() {
+    closePlanningForecastActionModal();
+  });
+
+  $('#btn-forecast-apply-future').on('click', function() {
+    if (!currentForecastModalData) return;
+    const rawInput = $('#forecast-modal-input-val').val();
+    const parsed = parseUserInputCurrency(rawInput);
+    const { year, cat, month, tipo } = currentForecastModalData;
+    closePlanningForecastActionModal();
+    modifyForecastAcrossMonths(year, cat, month, parsed, tipo);
+  });
+
+  $('#btn-forecast-delete-future').on('click', function() {
+    if (!currentForecastModalData) return;
+    const { year, cat, month, tipo } = currentForecastModalData;
+    closePlanningForecastActionModal();
+    modifyForecastAcrossMonths(year, cat, month, 0, tipo);
+  });
+
+  $('#btn-forecast-apply-single').on('click', function() {
+    if (!currentForecastModalData) return;
+    const rawInput = $('#forecast-modal-input-val').val();
+    const parsed = parseUserInputCurrency(rawInput);
+    const { year, cat, month, tipo } = currentForecastModalData;
+    closePlanningForecastActionModal();
+    modifyForecastSingleMonth(year, cat, month, parsed, tipo);
+  });
+
+  $('#btn-forecast-view-txs').on('click', function() {
+    if (!currentForecastModalData) return;
+    const { year, cat, month, tipo } = currentForecastModalData;
+    closePlanningForecastActionModal();
+    openPlanningDrawer(cat, month, year, tipo);
+  });
+
+  $('#forecast-modal-input-val').on('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('#btn-forecast-apply-future').click();
+    } else if (e.key === 'Escape') {
+      closePlanningForecastActionModal();
+    }
+  });
+
+  $('#btn-update-planning-forecast').on('click', function() {
+    updatePlanningForecasts(currentPlanningYear);
+  });
+
   function generateMockPlanningData(year) {
     const currentMonthNum = new Date().getMonth() + 1;
     const monthsMeta = Array.from({length: 12}, (_, i) => ({
@@ -5456,8 +5897,13 @@ $(document).ready(function() {
       }
     });
 
-    // Populate with amounts from GLOBAL_MOCK_TRANSACTIONS
-    const txs = (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : [];
+    // Populate with amounts from currentLoadedTransactions or GLOBAL_MOCK_TRANSACTIONS
+    let txs = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
+      ? currentLoadedTransactions
+      : ((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : []);
+    if (typeof applyCategoryOverrides === 'function') {
+      txs = applyCategoryOverrides(txs);
+    }
     txs.forEach(t => {
       if (!t.categoria || !t.data) return;
       const d = parseLocalDateString(t.data);

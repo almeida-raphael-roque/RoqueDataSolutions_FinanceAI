@@ -574,6 +574,34 @@ function getPlanningOverridesBackend() {
   }
 }
 
+function savePlanningForecastsBackend(year, forecastsJson) {
+  try {
+    const userProp = PropertiesService.getUserProperties();
+    let allForecasts = {};
+    const raw = userProp.getProperty('PLANNING_AUTOMATED_FORECASTS');
+    if (raw) {
+      try { allForecasts = JSON.parse(raw); } catch(e) {}
+    }
+    const yStr = String(year);
+    const parsedData = (typeof forecastsJson === 'string') ? JSON.parse(forecastsJson) : forecastsJson;
+    allForecasts[yStr] = parsedData[yStr] || parsedData;
+    userProp.setProperty('PLANNING_AUTOMATED_FORECASTS', JSON.stringify(allForecasts));
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function getPlanningForecastsBackend() {
+  try {
+    const userProp = PropertiesService.getUserProperties();
+    const raw = userProp.getProperty('PLANNING_AUTOMATED_FORECASTS');
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) {
+    return {};
+  }
+}
+
 function removePlanningOverrideBackend(year, cat, month) {
   try {
     const userProp = PropertiesService.getUserProperties();
