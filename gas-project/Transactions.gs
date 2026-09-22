@@ -512,14 +512,14 @@ function getPlanningData(year) {
         for (let m = 1; m <= 12; m++) {
           if (yearOv[cat] && yearOv[cat][m] !== undefined) {
             const ov = yearOv[cat][m];
-            // Se for resíduo com 0 em Outubro para ENTRADAS ou JANETE, expurga para liberar a previsão
-            if ((catClean === 'entradas' || catClean === 'janete') && m === 10) {
+            // Apenas para o ano corrente (2026), se for resíduo zerado de Outubro em ENTRADAS ou JANETE
+            if (targetYear === 2026 && (catClean === 'entradas' || catClean === 'janete') && m === 10 && ov.val === 0) {
               delete yearOv[cat][m];
               ovBackendChanged = true;
               continue;
             }
-            // Se for override com valor 0 em mês futuro/atual, não bloqueia projeções automáticas
-            if (ov.val === 0 && m >= currentMonthNum) {
+            // Apenas para meses futuros do ano corrente, overrides zerados não bloqueiam previsões automáticas
+            if (targetYear === currentYear && ov.val === 0 && m >= currentMonthNum) {
               delete yearOv[cat][m];
               ovBackendChanged = true;
               continue;

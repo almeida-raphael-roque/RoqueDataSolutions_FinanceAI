@@ -4750,28 +4750,39 @@ $(document).ready(function() {
   // PLANEJAMENTO FINANCEIRO ANUAL
   // ==========================================
   let currentPlanningYear = new Date().getFullYear();
-      let planningDataCache = null;
+  let planningDataCache = null;
+  let planningDataCacheByYear = {};
 
   function getActivePlanningYear() {
+    const pYearVal = parseInt($('#planning-year-select').val(), 10);
+    if (!isNaN(pYearVal) && pYearVal > 2000) return pYearVal;
     const topYearVal = parseInt($('#filter-year').val(), 10);
     if (!isNaN(topYearVal) && topYearVal > 2000) return topYearVal;
-    const selectVal = parseInt($('#planning-year-select').val(), 10);
-    if (!isNaN(selectVal) && selectVal > 2000) return selectVal;
     return new Date().getFullYear();
   }
 
-  function loadPlanning() {
+  function loadPlanning(yearToLoad) {
     $('#planning-loading').removeClass('hidden');
     $('#planning-matrix-container').addClass('hidden');
     
-    currentPlanningYear = getActivePlanningYear();
+    currentPlanningYear = parseInt(yearToLoad, 10) || getActivePlanningYear();
+
+    // Sincroniza os selects de ano na barra de planejamento e global
+    if ($('#planning-year-select').length && parseInt($('#planning-year-select').val(), 10) !== currentPlanningYear) {
+      $('#planning-year-select').val(currentPlanningYear);
+    }
+    if ($('#filter-year').length && parseInt($('#filter-year').val(), 10) !== currentPlanningYear && $('#filter-year').val() !== 'all') {
+      $('#filter-year').val(currentPlanningYear);
+    }
 
     const processAndRender = (data) => {
-      // Sempre recalcula as previsões automáticas baseando-se nos dados reais recebidos da planilha/mock
+      // Garante que os dados correspondam estritamente ao ano solicitado
+      data.year = currentPlanningYear;
       if (typeof calculatePlanningForecastsData === 'function') {
         calculatePlanningForecastsData(currentPlanningYear, data);
       }
       applyPlanningOverrides(data);
+      planningDataCacheByYear[currentPlanningYear] = data;
       planningDataCache = data;
       renderPlanning(data);
       $('#planning-loading').addClass('hidden');
@@ -4797,11 +4808,16 @@ $(document).ready(function() {
     }
   }
 
-  $('#planning-year-select').change(function() {
-    loadPlanning();
+  $(document).on('change', '#planning-year-select', function() {
+    const yr = parseInt($(this).val(), 10);
+    if (!isNaN(yr) && yr > 2000) {
+      $('#filter-year').val(yr);
+      loadPlanning(yr);
+    }
   });
+
   $('#btn-refresh-planning').click(function() {
-    loadPlanning();
+    loadPlanning(currentPlanningYear);
   });
 
   // --- REGRAS DE PREVISTO vs NORMAL & PERSISTÊNCIA DE EDIÇÃO MANUAL ---
@@ -4869,6 +4885,11 @@ $(document).ready(function() {
       try {
         localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(overrides));
       } catch (e) {}
+    }
+    if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.removePlanningOverrideBackend) {
+      google.script.run
+        .withFailureHandler(function(err) { console.warn('Could not sync override removal to backend:', err); })
+        .removePlanningOverrideBackend(year, cat, month);
     }
   }
 
@@ -4999,35 +5020,37 @@ $(document).ready(function() {
     const forecasts = getPlanningForecasts();
     if (!forecasts[String(targetYear)]) forecasts[String(targetYear)] = {};
 
-    // Limpa overrides de valor 0 que silenciam previsões em meses atuais/futuros,
-    // e purga especificamente qualquer override residual de Outubro (mês 10) para ENTRADAS e JANETE
-    try {
-      const allOv = getPlanningOverrides();
-      const yStr = String(targetYear);
-      if (allOv && allOv[yStr]) {
-        let changed = false;
-        Object.keys(allOv[yStr]).forEach(cName => {
-          const cClean = cName.trim().toLowerCase();
-          for (let m = currentMonthNum; m <= 12; m++) {
-            if (allOv[yStr][cName] && allOv[yStr][cName][m] && allOv[yStr][cName][m].val === 0) {
-              delete allOv[yStr][cName][m];
+    // Limpa overrides de valor 0 que silenciam previsões em meses atuais/futuros apenas do ano atual,
+    // e purga especificamente qualquer override residual de Outubro (mês 10) para ENTRADAS e JANETE em 2026
+    if (targetYear === currentYear) {
+      try {
+        const allOv = getPlanningOverrides();
+        const yStr = String(targetYear);
+        if (allOv && allOv[yStr]) {
+          let changed = false;
+          Object.keys(allOv[yStr]).forEach(cName => {
+            const cClean = cName.trim().toLowerCase();
+            for (let m = currentMonthNum; m <= 12; m++) {
+              if (allOv[yStr][cName] && allOv[yStr][cName][m] && allOv[yStr][cName][m].val === 0) {
+                delete allOv[yStr][cName][m];
+                changed = true;
+              }
+            }
+            if (targetYear === 2026 && (cClean === 'entradas' || cClean === 'janete') && allOv[yStr][cName] && allOv[yStr][cName][10] !== undefined && allOv[yStr][cName][10].val === 0) {
+              delete allOv[yStr][cName][10];
               changed = true;
             }
+            if (allOv[yStr][cName] && Object.keys(allOv[yStr][cName]).length === 0) {
+              delete allOv[yStr][cName];
+              changed = true;
+            }
+          });
+          if (changed) {
+            localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(allOv));
           }
-          if ((cClean === 'entradas' || cClean === 'janete') && allOv[yStr][cName] && allOv[yStr][cName][10] !== undefined) {
-            delete allOv[yStr][cName][10];
-            changed = true;
-          }
-          if (allOv[yStr][cName] && Object.keys(allOv[yStr][cName]).length === 0) {
-            delete allOv[yStr][cName];
-            changed = true;
-          }
-        });
-        if (changed) {
-          localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(allOv));
         }
-      }
-    } catch(e) {}
+      } catch(e) {}
+    }
 
     let qualifiedCount = 0;
 
@@ -5193,14 +5216,26 @@ $(document).ready(function() {
       localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts));
     } catch(e) {}
 
-    loadPlanning();
+    // Sincroniza com o backend estritamente para o ano específico
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      if (google.script.run.savePlanningForecastsBackend) {
+        google.script.run.savePlanningForecastsBackend(year, JSON.stringify(forecasts));
+      }
+      if (google.script.run.savePlanningOverrideBackend) {
+        for (let m = fromMonth; m <= 12; m++) {
+          google.script.run.savePlanningOverrideBackend(year, cat, m, tipo, newVal);
+        }
+      }
+    }
+
+    loadPlanning(year);
 
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const startMonthName = months[fromMonth - 1] || `Mês ${fromMonth}`;
     if (newVal === 0) {
-      showRefreshToast(`Previsões de "${cat}" apagadas de ${startMonthName} até Dezembro.`);
+      showRefreshToast(`Previsões de "${cat}" apagadas de ${startMonthName} até Dezembro de ${year}.`);
     } else {
-      showRefreshToast(`Previsões de "${cat}" alteradas para ${formatCurrency(newVal)} de ${startMonthName} até Dezembro.`);
+      showRefreshToast(`Previsões de "${cat}" alteradas para ${formatCurrency(newVal)} de ${startMonthName} até Dezembro de ${year}.`);
     }
   }
 
@@ -5213,11 +5248,11 @@ $(document).ready(function() {
       forecasts[yStr][cat].months[month] = newVal;
       savePlanningForecasts(year, forecasts);
     }
-    loadPlanning();
+    loadPlanning(year);
 
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const monthName = months[month - 1] || `Mês ${month}`;
-    showRefreshToast(`Previsão de "${cat}" para ${monthName} ajustada para ${formatCurrency(newVal)}.`);
+    showRefreshToast(`Previsão de "${cat}" para ${monthName} de ${year} ajustada para ${formatCurrency(newVal)}.`);
   }
 
   function applyPlanningOverrides(data) {
@@ -5355,7 +5390,7 @@ $(document).ready(function() {
               if (ov.val === 0 && isFutureOrCurrent && hasActiveForecast) {
                 continue;
               }
-              if ((catClean === 'entradas' || catClean === 'janete') && m === 10 && ov.val === 0) {
+              if (data.year === 2026 && (catClean === 'entradas' || catClean === 'janete') && m === 10 && ov.val === 0) {
                 continue;
               }
               const cell = data.incomeCategories[cat][m - 1];
@@ -5809,7 +5844,8 @@ $(document).ready(function() {
     const cat = decodeURIComponent($td.attr('data-cat') || '');
     const month = parseInt($td.attr('data-month'), 10);
     const tipo = $td.attr('data-tipo');
-    const year = currentPlanningYear;
+    const cellYear = parseInt($td.attr('data-year'), 10);
+    const year = (!isNaN(cellYear) && cellYear > 2000) ? cellYear : (currentPlanningYear || getActivePlanningYear());
     
     const initialRawVal = parseFloat($td.data('initial-raw-val')) || 0;
     const initialIsManual = $td.data('initial-is-manual') === true;
@@ -5825,22 +5861,27 @@ $(document).ready(function() {
       return;
     }
     
-    // Houve alteração no valor: salva e aplica em negrito
+    // Houve alteração no valor: salva e aplica em negrito estritamente para o ano específico da célula
     savePlanningOverride(year, cat, month, tipo, parsedVal);
     
-    if (planningDataCache) {
-      applyPlanningOverrides(planningDataCache);
+    const targetData = planningDataCacheByYear[year] || (planningDataCache && planningDataCache.year === year ? planningDataCache : null);
+    if (targetData) {
+      applyPlanningOverrides(targetData);
       
-      const container = document.getElementById('planning-matrix-container');
-      const scrollLeft = container ? container.scrollLeft : 0;
-      const scrollTop = container ? container.scrollTop : 0;
-      
-      renderPlanning(planningDataCache);
-      
-      if (container) {
-        container.scrollLeft = scrollLeft;
-        container.scrollTop = scrollTop;
+      if (currentPlanningYear === year) {
+        const container = document.getElementById('planning-matrix-container');
+        const scrollLeft = container ? container.scrollLeft : 0;
+        const scrollTop = container ? container.scrollTop : 0;
+        
+        renderPlanning(targetData);
+        
+        if (container) {
+          container.scrollLeft = scrollLeft;
+          container.scrollTop = scrollTop;
+        }
       }
+    } else {
+      loadPlanning(year);
     }
   }
 
@@ -6119,12 +6160,22 @@ $(document).ready(function() {
   });
 
   function generateMockPlanningData(year) {
-    const currentMonthNum = new Date().getMonth() + 1;
-    const monthsMeta = Array.from({length: 12}, (_, i) => ({
-      month: i + 1,
-      status: (i + 1 < currentMonthNum) ? 'realized' : (i + 1 === currentMonthNum) ? 'current' : 'planned',
-      name: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][i]
-    }));
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = now.getMonth() + 1;
+    const monthsMeta = Array.from({length: 12}, (_, i) => {
+      let status = 'planned';
+      if (year < currentYear || (year === currentYear && (i + 1) < currentMonthNum)) {
+        status = 'realized';
+      } else if (year === currentYear && (i + 1) === currentMonthNum) {
+        status = 'current';
+      }
+      return {
+        month: i + 1,
+        status: status,
+        name: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][i]
+      };
+    });
 
     const incomeCategories = {};
     const expenseMacros = {

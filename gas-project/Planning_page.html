@@ -9,7 +9,20 @@
   <div id="planning-matrix-container" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col min-h-[400px]">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div class="flex-1 w-full max-w-lg relative">
-        <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Detalhamento Mês a Mês</h3>
+        <div class="flex items-center gap-3">
+          <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Detalhamento Mês a Mês</h3>
+          <div class="inline-flex items-center gap-1.5 bg-white dark:bg-slate-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1 shadow-xs">
+            <i class="fa-regular fa-calendar text-xs text-primary"></i>
+            <select id="planning-year-select" class="bg-transparent text-xs font-bold text-gray-800 dark:text-gray-200 focus:outline-none cursor-pointer">
+              <option value="2023">2023</option>
+              <option value="2024">2024</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+              <option value="2027">2027</option>
+              <option value="2028">2028</option>
+            </select>
+          </div>
+        </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span><i class="fa-solid fa-mouse-pointer text-[11px] text-primary mr-1"></i>1 clique: ver transações</span>
           <span class="text-gray-300 dark:text-gray-600">•</span>
