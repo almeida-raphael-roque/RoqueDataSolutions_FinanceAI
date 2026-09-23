@@ -684,7 +684,7 @@ function openAddCategoryModal(macroProfile) {
     const activePage = $('.page-view:not(.hidden-page)').attr('id');
     if(activePage === 'page-dashboard') loadDashboard();
     if(activePage === 'page-transactions') loadTransactions();
-    if(activePage === 'page-planning') loadPlanning();
+    if(activePage === 'page-planning') loadPlanning(getActivePlanningYear());
     if(activePage === 'page-categories') loadCategoriesPage();
     if(activePage === 'page-spending-control' && typeof loadSpendingControl === 'function') loadSpendingControl();
   }
@@ -699,16 +699,6 @@ function openAddCategoryModal(macroProfile) {
     $('.nav-item').removeClass('bg-gray-800 border-l-4 border-primary text-white').addClass('text-gray-400 dark:text-slate-500 border-transparent hover:bg-gray-800/50');
     $(`[data-target="${pageId}"]`).removeClass('text-gray-400 dark:text-slate-500 border-transparent hover:bg-gray-800/50').addClass('bg-gray-800 border-l-4 border-primary text-white');
     
-    // Only load if not loaded yet
-    if (!pageLoadStates[pageId]) {
-      if(pageId === 'page-dashboard') loadDashboard();
-      if(pageId === 'page-transactions') loadTransactions();
-      if(pageId === 'page-planning') loadPlanning();
-      if(pageId === 'page-categories') loadCategoriesPage();
-      if(pageId === 'page-spending-control' && typeof loadSpendingControl === 'function') loadSpendingControl();
-      pageLoadStates[pageId] = true;
-    }
-
     // Toggle global filters
     if (pageId === 'page-categories') {
       $('#global-filters').removeClass('md:flex').addClass('!hidden');
@@ -716,10 +706,24 @@ function openAddCategoryModal(macroProfile) {
       $('#global-filters').removeClass('!hidden').addClass('md:flex');
       $('#filter-month').addClass('!hidden');
       $('#filter-year').removeClass('!hidden');
+      const curYr = parseInt($('#filter-year').val(), 10);
+      if (isNaN(curYr) || curYr <= 2000) {
+        $('#filter-year').val(new Date().getFullYear());
+      }
     } else {
       $('#global-filters').removeClass('!hidden').addClass('md:flex');
       $('#filter-month').removeClass('!hidden');
       $('#filter-year').removeClass('!hidden');
+    }
+
+    // Only load if not loaded yet
+    if (!pageLoadStates[pageId]) {
+      if(pageId === 'page-dashboard') loadDashboard();
+      if(pageId === 'page-transactions') loadTransactions();
+      if(pageId === 'page-planning') loadPlanning(getActivePlanningYear());
+      if(pageId === 'page-categories') loadCategoriesPage();
+      if(pageId === 'page-spending-control' && typeof loadSpendingControl === 'function') loadSpendingControl();
+      pageLoadStates[pageId] = true;
     }
   }
 
@@ -4754,8 +4758,6 @@ $(document).ready(function() {
   let planningDataCacheByYear = {};
 
   function getActivePlanningYear() {
-    const pYearVal = parseInt($('#planning-year-select').val(), 10);
-    if (!isNaN(pYearVal) && pYearVal > 2000) return pYearVal;
     const topYearVal = parseInt($('#filter-year').val(), 10);
     if (!isNaN(topYearVal) && topYearVal > 2000) return topYearVal;
     return new Date().getFullYear();
@@ -4768,12 +4770,10 @@ $(document).ready(function() {
     $('#planning-loading').removeClass('hidden');
     $('#planning-matrix-container').addClass('hidden');
     
-    currentPlanningYear = parseInt(yearToLoad, 10) || getActivePlanningYear();
+    const parsedYr = parseInt(yearToLoad, 10);
+    currentPlanningYear = (!isNaN(parsedYr) && parsedYr > 2000) ? parsedYr : getActivePlanningYear();
 
-    // Sincroniza os selects de ano na barra de planejamento e global
-    if ($('#planning-year-select').length && parseInt($('#planning-year-select').val(), 10) !== currentPlanningYear) {
-      $('#planning-year-select').val(currentPlanningYear);
-    }
+    // Sincroniza o select de ano da barra superior global
     if ($('#filter-year').length && parseInt($('#filter-year').val(), 10) !== currentPlanningYear && $('#filter-year').val() !== 'all') {
       $('#filter-year').val(currentPlanningYear);
     }
@@ -4810,14 +4810,6 @@ $(document).ready(function() {
       }, 500);
     }
   }
-
-  $(document).on('change', '#planning-year-select', function() {
-    const yr = parseInt($(this).val(), 10);
-    if (!isNaN(yr) && yr > 2000) {
-      $('#filter-year').val(yr);
-      loadPlanning(yr);
-    }
-  });
 
   $('#btn-refresh-planning').click(function() {
     loadPlanning(currentPlanningYear);
@@ -5714,7 +5706,7 @@ $(document).ready(function() {
       recChildren += `<tr class="row-receitas hidden bg-white dark:bg-[#1e293b] hover:bg-gray-50 dark:hover:bg-[#334155] transition-colors group">
         <td class="px-4 py-2 planning-sticky-col planning-sticky-body planning-child-cat border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
           <div class="flex items-center justify-between w-full pl-6">
-            <span class="truncate pr-2" title="${cat}">${cat}</span>
+            <span class="truncate pr-2 cursor-pointer hover:text-purple-600 dark:hover:text-purple-400 transition-colors select-none" title="Clique para selecionar a linha e excluir previsão em lote">${cat}</span>
             <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
               <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
                 <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
@@ -5767,7 +5759,7 @@ $(document).ready(function() {
         childrenHtml += `<tr class="${rowClass} hidden bg-white dark:bg-[#1e293b] hover:bg-gray-50 dark:hover:bg-[#334155] transition-colors group">
           <td class="px-4 py-2 planning-sticky-col planning-sticky-body planning-child-cat border-r border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
             <div class="flex items-center justify-between w-full pl-6">
-              <span class="truncate pr-2" title="${cat}">${cat}</span>
+              <span class="truncate pr-2 cursor-pointer hover:text-purple-600 dark:hover:text-purple-400 transition-colors select-none" title="Clique para selecionar a linha e excluir previsão em lote">${cat}</span>
               <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity shrink-0">
                 <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
                   <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
