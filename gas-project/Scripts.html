@@ -2022,6 +2022,105 @@ function openAddCategoryModal(macroProfile) {
     }
   }
   
+  function isCurrentDarkMode() {
+    return $('html').hasClass('dark');
+  }
+
+  function getBarDatalabelsConfig() {
+    return {
+      display: function(context) {
+        const val = context.dataset.data[context.dataIndex];
+        return typeof val === 'number' && val > 0;
+      },
+      anchor: 'end',
+      align: function(context) {
+        const chart = context.chart;
+        const val = context.dataset.data[context.dataIndex] || 0;
+        const xScale = chart.scales.x;
+        if (xScale) {
+          const pixelWidth = Math.abs(xScale.getPixelForValue(val) - xScale.getPixelForValue(0));
+          return pixelWidth >= 90 ? 'start' : 'end';
+        }
+        const maxVal = Math.max(...context.dataset.data.map(v => Number(v) || 0));
+        return (maxVal > 0 && (val / maxVal) >= 0.28) ? 'start' : 'end';
+      },
+      offset: 6,
+      color: function(context) {
+        const chart = context.chart;
+        const val = context.dataset.data[context.dataIndex] || 0;
+        const xScale = chart.scales.x;
+        const isDark = isCurrentDarkMode();
+        if (xScale) {
+          const pixelWidth = Math.abs(xScale.getPixelForValue(val) - xScale.getPixelForValue(0));
+          if (pixelWidth >= 90) {
+            return '#ffffff';
+          }
+        } else {
+          const maxVal = Math.max(...context.dataset.data.map(v => Number(v) || 0));
+          if (maxVal > 0 && (val / maxVal) >= 0.28) {
+            return '#ffffff';
+          }
+        }
+        return isDark ? '#ffffff' : '#1e293b';
+      },
+      font: { family: 'Inter, sans-serif', weight: '600', size: 11 },
+      formatter: function(value) {
+        if (!value) return '';
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+      }
+    };
+  }
+
+  function getBarTooltipConfig() {
+    return {
+      backgroundColor: 'rgba(17, 24, 39, 0.95)',
+      titleFont: { family: 'Inter, sans-serif', size: 13, weight: '600' },
+      bodyFont: { family: 'Inter, sans-serif', size: 13 },
+      padding: 12,
+      cornerRadius: 8,
+      callbacks: {
+        label: function(context) {
+          const dataset = context.chart.data.datasets[0];
+          const total = dataset.data.reduce((acc, curr) => acc + (Number(curr) || 0), 0);
+          const value = context.parsed.x;
+          const pct = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+          const formattedVal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+          return ` ${formattedVal} (${pct} do total)`;
+        }
+      }
+    };
+  }
+
+  function getBarScalesConfig() {
+    const isDark = isCurrentDarkMode();
+    return {
+      x: {
+        beginAtZero: true,
+        grace: '20%',
+        grid: {
+          borderDash: [4, 4],
+          color: isDark ? 'rgba(51, 65, 85, 0.4)' : '#f3f4f6'
+        },
+        ticks: {
+          font: { family: 'Inter, sans-serif' },
+          color: isDark ? '#cbd5e1' : '#6b7280',
+          callback: function(value) {
+            if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
+            return 'R$ ' + value;
+          }
+        }
+      },
+      y: {
+        grid: { display: false },
+        ticks: {
+          font: { family: 'Inter, sans-serif', weight: '500' },
+          color: isDark ? '#ffffff' : '#374151',
+          padding: 8
+        }
+      }
+    };
+  }
+
   function renderEvolutionChart(chartData) {
     const ctx = document.getElementById('evolutionChart');
     if (!ctx) return;
@@ -2034,6 +2133,8 @@ function openAddCategoryModal(macroProfile) {
       return;
     }
     
+    const isDark = isCurrentDarkMode();
+
     evolutionChartInstance = new Chart(ctx, {
       type: 'line',
       data: {
@@ -2075,7 +2176,13 @@ function openAddCategoryModal(macroProfile) {
         plugins: {
           legend: {
             position: 'top',
-            labels: { usePointStyle: true, boxWidth: 8, padding: 20, font: { family: 'Inter, sans-serif' } }
+            labels: {
+              usePointStyle: true,
+              boxWidth: 8,
+              padding: 20,
+              font: { family: 'Inter, sans-serif' },
+              color: isDark ? '#ffffff' : '#374151'
+            }
           },
           tooltip: {
             backgroundColor: 'rgba(17, 24, 39, 0.9)',
@@ -2100,10 +2207,10 @@ function openAddCategoryModal(macroProfile) {
         scales: {
           y: {
             beginAtZero: true,
-            grid: { borderDash: [4, 4], color: '#f3f4f6' },
+            grid: { borderDash: [4, 4], color: isDark ? 'rgba(51, 65, 85, 0.4)' : '#f3f4f6' },
             ticks: {
               font: { family: 'Inter, sans-serif' },
-              color: '#6b7280',
+              color: isDark ? '#ffffff' : '#6b7280',
               callback: function(value) {
                 if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
                 return 'R$ ' + value;
@@ -2112,7 +2219,7 @@ function openAddCategoryModal(macroProfile) {
           },
           x: {
             grid: { display: false },
-            ticks: { font: { family: 'Inter, sans-serif' }, color: '#6b7280' }
+            ticks: { font: { family: 'Inter, sans-serif' }, color: isDark ? '#cbd5e1' : '#6b7280' }
           }
         }
       }
@@ -2180,57 +2287,10 @@ function openAddCategoryModal(macroProfile) {
         },
         plugins: {
           legend: { display: false },
-          datalabels: {
-            display: function(context) {
-              const dataset = context.chart.data.datasets[0];
-              const value = dataset.data[context.dataIndex];
-              const total = dataset.data.reduce((acc, current) => acc + current, 0);
-              if (total === 0) return false;
-              return ((value / total) * 100) >= 5;
-            },
-            color: 'white',
-            anchor: 'end',
-            align: 'start',
-            offset: 4,
-            font: { family: 'Inter, sans-serif', weight: '600', size: 12 },
-            formatter: (value, context) => {
-              const dataset = context.chart.data.datasets[0];
-              const total = dataset.data.reduce((acc, current) => acc + current, 0);
-              if (total === 0) return '0%';
-              return ((value / total) * 100).toFixed(1) + '%';
-            }
-          },
-          tooltip: {
-            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-            titleFont: { family: 'Inter, sans-serif', size: 13 },
-            bodyFont: { family: 'Inter, sans-serif', size: 13 },
-            padding: 12,
-            cornerRadius: 8,
-            callbacks: {
-              label: function(context) {
-                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.x);
-              }
-            }
-          }
+          datalabels: getBarDatalabelsConfig(),
+          tooltip: getBarTooltipConfig()
         },
-        scales: {
-          x: {
-            beginAtZero: true,
-            grid: { borderDash: [4, 4], color: '#f3f4f6' },
-            ticks: {
-              font: { family: 'Inter, sans-serif' },
-              color: '#6b7280',
-              callback: function(value) {
-                if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
-                return 'R$ ' + value;
-              }
-            }
-          },
-          y: {
-            grid: { display: false },
-            ticks: { font: { family: 'Inter, sans-serif', weight: '500' }, color: '#374151' }
-          }
-        }
+        scales: getBarScalesConfig()
       }
     });
   }
@@ -2268,57 +2328,10 @@ function openAddCategoryModal(macroProfile) {
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          datalabels: {
-            display: function(context) {
-              const dataset = context.chart.data.datasets[0];
-              const value = dataset.data[context.dataIndex];
-              const total = dataset.data.reduce((acc, current) => acc + current, 0);
-              if (total === 0) return false;
-              return ((value / total) * 100) >= 5;
-            },
-            color: 'white',
-            anchor: 'end',
-            align: 'start',
-            offset: 4,
-            font: { family: 'Inter, sans-serif', weight: '600', size: 12 },
-            formatter: (value, context) => {
-              const dataset = context.chart.data.datasets[0];
-              const total = dataset.data.reduce((acc, current) => acc + current, 0);
-              if (total === 0) return '0%';
-              return ((value / total) * 100).toFixed(1) + '%';
-            }
-          },
-          tooltip: {
-            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-            titleFont: { family: 'Inter, sans-serif', size: 13 },
-            bodyFont: { family: 'Inter, sans-serif', size: 13 },
-            padding: 12,
-            cornerRadius: 8,
-            callbacks: {
-              label: function(context) {
-                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.x);
-              }
-            }
-          }
+          datalabels: getBarDatalabelsConfig(),
+          tooltip: getBarTooltipConfig()
         },
-        scales: {
-          x: {
-            beginAtZero: true,
-            grid: { borderDash: [4, 4], color: '#f3f4f6' },
-            ticks: {
-              font: { family: 'Inter, sans-serif' },
-              color: '#6b7280',
-              callback: function(value) {
-                if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
-                return 'R$ ' + value;
-              }
-            }
-          },
-          y: {
-            grid: { display: false },
-            ticks: { font: { family: 'Inter, sans-serif', weight: '500' }, color: '#374151' }
-          }
-        }
+        scales: getBarScalesConfig()
       }
     });
   }
@@ -2372,57 +2385,10 @@ function openAddCategoryModal(macroProfile) {
         },
         plugins: {
           legend: { display: false },
-          datalabels: {
-            display: function(context) {
-              const dataset = context.chart.data.datasets[0];
-              const value = dataset.data[context.dataIndex];
-              const total = dataset.data.reduce((acc, current) => acc + current, 0);
-              if (total === 0) return false;
-              return ((value / total) * 100) >= 5;
-            },
-            color: 'white',
-            anchor: 'end',
-            align: 'start',
-            offset: 4,
-            font: { family: 'Inter, sans-serif', weight: '600', size: 12 },
-            formatter: (value, context) => {
-              const dataset = context.chart.data.datasets[0];
-              const total = dataset.data.reduce((acc, current) => acc + current, 0);
-              if (total === 0) return '0%';
-              return ((value / total) * 100).toFixed(1) + '%';
-            }
-          },
-          tooltip: {
-            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-            titleFont: { family: 'Inter, sans-serif', size: 13 },
-            bodyFont: { family: 'Inter, sans-serif', size: 13 },
-            padding: 12,
-            cornerRadius: 8,
-            callbacks: {
-              label: function(context) {
-                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.x);
-              }
-            }
-          }
+          datalabels: getBarDatalabelsConfig(),
+          tooltip: getBarTooltipConfig()
         },
-        scales: {
-          x: {
-            beginAtZero: true,
-            grid: { borderDash: [4, 4], color: '#f3f4f6' },
-            ticks: {
-              font: { family: 'Inter, sans-serif' },
-              color: '#6b7280',
-              callback: function(value) {
-                if (value >= 1000) return 'R$ ' + (value / 1000) + 'k';
-                return 'R$ ' + value;
-              }
-            }
-          },
-          y: {
-            grid: { display: false },
-            ticks: { font: { family: 'Inter, sans-serif', weight: '500' }, color: '#374151' }
-          }
-        }
+        scales: getBarScalesConfig()
       }
     });
   }
@@ -4310,7 +4276,47 @@ function openAddCategoryModal(macroProfile) {
             localStorage.setItem('color-theme', 'dark');
             updateToggleUI(true);
         }
+        refreshChartsTheme();
     });
+
+    function refreshChartsTheme() {
+      const isDark = $('html').hasClass('dark');
+      const axisYColor = isDark ? '#ffffff' : '#374151';
+      const axisXColor = isDark ? '#cbd5e1' : '#6b7280';
+      const gridColor = isDark ? 'rgba(51, 65, 85, 0.4)' : '#f3f4f6';
+
+      const barCharts = [macroChartInstance, categoryChartInstance, incomeCategoryChartInstance];
+      barCharts.forEach(chart => {
+        if (chart && chart.options && chart.options.scales) {
+          if (chart.options.scales.y && chart.options.scales.y.ticks) {
+            chart.options.scales.y.ticks.color = axisYColor;
+          }
+          if (chart.options.scales.x && chart.options.scales.x.ticks) {
+            chart.options.scales.x.ticks.color = axisXColor;
+          }
+          if (chart.options.scales.x && chart.options.scales.x.grid) {
+            chart.options.scales.x.grid.color = gridColor;
+          }
+          chart.update();
+        }
+      });
+
+      if (evolutionChartInstance && evolutionChartInstance.options && evolutionChartInstance.options.scales) {
+        if (evolutionChartInstance.options.scales.y && evolutionChartInstance.options.scales.y.ticks) {
+          evolutionChartInstance.options.scales.y.ticks.color = axisYColor;
+        }
+        if (evolutionChartInstance.options.scales.y && evolutionChartInstance.options.scales.y.grid) {
+          evolutionChartInstance.options.scales.y.grid.color = gridColor;
+        }
+        if (evolutionChartInstance.options.scales.x && evolutionChartInstance.options.scales.x.ticks) {
+          evolutionChartInstance.options.scales.x.ticks.color = axisXColor;
+        }
+        if (evolutionChartInstance.options.plugins && evolutionChartInstance.options.plugins.legend && evolutionChartInstance.options.plugins.legend.labels) {
+          evolutionChartInstance.options.plugins.legend.labels.color = axisYColor;
+        }
+        evolutionChartInstance.update();
+      }
+    }
 
     function updateToggleUI(isDark) {
         if (isDark) {
