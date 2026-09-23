@@ -5612,8 +5612,8 @@ $(document).ready(function() {
     const encodedCat = encodeURIComponent(cat);
 
     let titleTooltip = '';
-    if (isForecast) {
-      titleTooltip = `Previsão: ${formatCurrency(rawVal)}\n• 1 clique: selecionar categoria para excluir previsão\n• 2 cliques: gerenciar / alterar previsão desta categoria`;
+    if (isForecast || (!hasRealized && isGlobalForecastMonth)) {
+      titleTooltip = `Previsão: ${formatCurrency(rawVal)}\n• 1 clique: selecionar célula e abrir box de valor em lote\n• Clique em outro mês na linha para selecionar o período`;
     } else if (isManual) { 
       titleTooltip = `Valor editado manualmente: ${formatCurrency(rawVal)}\n• 1 clique: ver transações\n• 2 cliques: editar valor\n• Botão direito: restaurar cálculo original`;
     } else {
@@ -5628,6 +5628,7 @@ $(document).ready(function() {
                 data-raw-value="${rawVal}"
                 data-is-manual="${isManual ? '1' : '0'}"
                 data-is-forecast="${isForecast ? '1' : '0'}"
+                data-has-realized="${hasRealized ? '1' : '0'}"
                 title="${titleTooltip}">
               <span class="cell-val inline-block w-full py-0.5 select-none ${textClasses}">${formatted}</span>
             </td>`;
@@ -6108,96 +6109,211 @@ $(document).ready(function() {
     showRefreshToast(`Previsões de ${count} ${count === 1 ? 'categoria excluída' : 'categorias excluídas'} com sucesso!`);
   }
 
-  function openBatchEditForecastModal() {
-    if (!selectedForecastCategories || selectedForecastCategories.size === 0) return;
-    const names = Array.from(selectedForecastCategories.keys());
-    const chipsHtml = names.map(n => `
-      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200">
-        <i class="fa-solid fa-tag text-[10px]"></i>
-        <span>${escapeHtml(n)}</span>
-      </span>
-    `).join('');
-    $('#batch-edit-categories-chips').html(chipsHtml);
-    $('#batch-edit-input-val').val('').focus();
-    $('#modal-batch-edit-forecast').removeClass('hidden');
+  // --- AÇÕES DE SELEÇÃO EM LOTE DE PREVISÕES POR CATEGORIA (BARRAS SUPERIOR E FLUTUANTE) ---
+  $(document).on('click', '#btn-batch-delete-forecasts, #btn-top-batch-delete', function() {
+    executeBatchDeleteForecasts();
+  });
+
+  $(document).on('click', '#btn-clear-forecast-selection, #btn-top-batch-cancel', function() {
+    clearForecastSelection();
+  });
+
+  // Permite selecionar/desmarcar a categoria para exclusão ao clicar no nome da categoria
+  $(document).on('click', '.planning-child-cat span.truncate', function(e) {
+    const $tr = $(this).closest('tr');
+    const $cell = $tr.find('td.planning-cell-action').first();
+    if ($cell.length) {
+      const cat = decodeURIComponent($cell.attr('data-cat') || '');
+      const tipo = $cell.attr('data-tipo');
+      const cellYear = parseInt($cell.attr('data-year'), 10) || currentPlanningYear;
+      toggleSelectForecastCategory(cat, 1, cellYear, tipo, $cell);
+    }
+  });
+
+  // --- SELEÇÃO DE RANGE EM LOTE E BOX DE PREVISÃO PARA MESES ATUAIS/FUTUROS ---
+  let activeForecastRange = null; 
+  // Objeto: { cat: string, tipo: string, year: number, anchorMonth: number, startMonth: number, endMonth: number }
+
+  function clearForecastRange() {
+    activeForecastRange = null;
+    updateForecastRangeHighlight();
+    $('#planning-range-forecast-box').addClass('hidden');
   }
 
-  function closeBatchEditForecastModal() {
-    $('#modal-batch-edit-forecast').addClass('hidden');
+  function updateForecastRangeHighlight() {
+    $('.planning-range-selected').removeClass('planning-range-selected ring-2 ring-inset ring-purple-600 dark:ring-purple-400 bg-purple-100 dark:bg-purple-950/70 font-bold');
+    
+    if (!activeForecastRange) return;
+    
+    const encodedCat = encodeURIComponent(activeForecastRange.cat);
+    $(`td.planning-cell-action[data-cat="${encodedCat}"][data-year="${activeForecastRange.year}"]`).each(function() {
+      const m = parseInt($(this).attr('data-month'), 10);
+      if (m >= activeForecastRange.startMonth && m <= activeForecastRange.endMonth) {
+        $(this).addClass('planning-range-selected ring-2 ring-inset ring-purple-600 dark:ring-purple-400 bg-purple-100 dark:bg-purple-950/70 font-bold');
+      }
+    });
   }
 
-  function executeBatchEditForecasts(newVal) {
-    if (!selectedForecastCategories || selectedForecastCategories.size === 0) return;
-    if (newVal === 0) {
-      executeBatchDeleteForecasts();
+  function handleForecastCellRangeClick(cat, month, cellYear, tipo, $td) {
+    if (!activeForecastRange || activeForecastRange.cat !== cat || activeForecastRange.year !== cellYear) {
+      // 1º clique: seleciona a célula e fixa âncora
+      activeForecastRange = {
+        cat: cat,
+        tipo: tipo,
+        year: cellYear,
+        anchorMonth: month,
+        startMonth: month,
+        endMonth: month
+      };
+    } else {
+      // 2º clique ou posterior na mesma linha: seleciona o range entre a âncora e o novo mês clicado
+      const minM = Math.min(activeForecastRange.anchorMonth, month);
+      const maxM = Math.max(activeForecastRange.anchorMonth, month);
+      activeForecastRange.startMonth = minM;
+      activeForecastRange.endMonth = maxM;
+    }
+
+    updateForecastRangeHighlight();
+    showForecastRangeBox();
+  }
+
+  function showForecastRangeBox() {
+    if (!activeForecastRange) return;
+
+    const $box = $('#planning-range-forecast-box');
+    const encodedCat = encodeURIComponent(activeForecastRange.cat);
+    const $matchingTds = $(`td.planning-cell-action[data-cat="${encodedCat}"][data-year="${activeForecastRange.year}"]`).filter(function() {
+      const m = parseInt($(this).attr('data-month'), 10);
+      return m >= activeForecastRange.startMonth && m <= activeForecastRange.endMonth;
+    });
+
+    if (!$matchingTds.length) {
+      $box.addClass('hidden');
       return;
     }
 
-    const count = selectedForecastCategories.size;
-    const year = currentPlanningYear;
-    const yStr = String(year);
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const monthAbbr = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-    const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
-    const currentYear = now.getFullYear();
-    const currentMonthNum = (year < currentYear) ? 12 : ((year > currentYear) ? 1 : (now.getMonth() + 1));
+    $('#range-box-category-name').text(activeForecastRange.cat).attr('title', activeForecastRange.cat);
+
+    const startM = activeForecastRange.startMonth;
+    const endM = activeForecastRange.endMonth;
+    let rangeLabel = '';
+    if (startM === endM) {
+      rangeLabel = `${monthNames[startM - 1]} / ${activeForecastRange.year}`;
+    } else {
+      const diff = (endM - startM) + 1;
+      rangeLabel = `${monthAbbr[startM - 1]} a ${monthAbbr[endM - 1]} / ${activeForecastRange.year} (${diff} meses)`;
+    }
+    $('#range-box-months-text').text(rangeLabel);
+
+    // Se o box estava oculto, preenche com o valor atual da primeira célula (se houver)
+    if ($box.hasClass('hidden')) {
+      const firstVal = parseFloat($matchingTds.first().attr('data-raw-value')) || 0;
+      if (firstVal > 0) {
+        $('#range-box-input-val').val(firstVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      } else {
+        $('#range-box-input-val').val('');
+      }
+    }
+
+    $box.removeClass('hidden');
+
+    // Posicionamento inteligente próximo ao range selecionado
+    const firstRect = $matchingTds.first()[0].getBoundingClientRect();
+    const lastRect = $matchingTds.last()[0].getBoundingClientRect();
+    const rangeLeft = Math.min(firstRect.left, lastRect.left);
+    const rangeRight = Math.max(firstRect.right, lastRect.right);
+    const rangeCenterX = (rangeLeft + rangeRight) / 2;
+    const rangeTop = firstRect.top;
+    const cellHeight = firstRect.height;
+
+    const boxWidth = 320;
+    const boxHeight = 220;
+    const winWidth = window.innerWidth;
+    const winHeight = window.innerHeight;
+
+    let top = rangeTop + cellHeight + 10;
+    if (top + boxHeight > winHeight - 16) {
+      top = rangeTop - boxHeight - 10;
+    }
+    if (top < 16) top = 16;
+
+    let left = rangeCenterX - (boxWidth / 2);
+    if (left < 16) left = 16;
+    if (left + boxWidth > winWidth - 16) left = winWidth - boxWidth - 16;
+
+    $box.css({
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`
+    });
+
+    setTimeout(() => {
+      $('#range-box-input-val').focus().select();
+    }, 30);
+  }
+
+  function applyForecastRangeValue(val) {
+    if (!activeForecastRange) return;
+    const cat = activeForecastRange.cat;
+    const tipo = activeForecastRange.tipo;
+    const year = activeForecastRange.year;
+    const yStr = String(year);
+    const startM = activeForecastRange.startMonth;
+    const endM = activeForecastRange.endMonth;
+
+    if (val === 0) {
+      deleteForecastRange();
+      return;
+    }
 
     const overrides = getPlanningOverrides();
     if (!overrides[yStr]) overrides[yStr] = {};
+    if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
 
     const forecasts = getPlanningForecasts();
     if (!forecasts[yStr]) forecasts[yStr] = {};
+    if (!forecasts[yStr][cat]) {
+      forecasts[yStr][cat] = { forecastValue: val, months: {} };
+    }
+    forecasts[yStr][cat].forecastValue = val;
+    forecasts[yStr][cat].isEligible = true;
+    forecasts[yStr][cat].isExcluded = false;
+    forecasts[yStr][cat].updatedAt = Date.now();
 
-    const categoriesArray = Array.from(selectedForecastCategories.values());
-
-    categoriesArray.forEach(item => {
-      const cat = item.cat;
-      const tipo = item.tipo;
-      const startMonth = Math.max(item.month || currentMonthNum, currentMonthNum);
-
-      if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
-      if (!forecasts[yStr][cat]) forecasts[yStr][cat] = { forecastValue: newVal, months: {} };
-
-      forecasts[yStr][cat].forecastValue = newVal;
-      forecasts[yStr][cat].isEligible = true;
-      forecasts[yStr][cat].isExcluded = false;
-      forecasts[yStr][cat].updatedAt = Date.now();
-
-      for (let m = startMonth; m <= 12; m++) {
-        overrides[yStr][cat][m] = {
-          val: newVal,
-          tipo: tipo,
-          isManualOverride: true,
-          isForecast: true,
-          updatedAt: Date.now()
-        };
-        forecasts[yStr][cat].months[m] = newVal;
-      }
-    });
+    for (let m = startM; m <= endM; m++) {
+      overrides[yStr][cat][m] = {
+        val: val,
+        tipo: tipo,
+        isManualOverride: true,
+        isForecast: true,
+        updatedAt: Date.now()
+      };
+      forecasts[yStr][cat].months[m] = val;
+    }
 
     try {
       localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(overrides));
       localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts));
     } catch(e) {}
 
-    // Sincroniza com backend
     if (typeof google !== 'undefined' && google.script && google.script.run) {
       if (google.script.run.savePlanningForecastsBackend) {
         google.script.run.savePlanningForecastsBackend(year, JSON.stringify(forecasts));
       }
       if (google.script.run.savePlanningOverrideBackend) {
-        categoriesArray.forEach(item => {
-          const cat = item.cat;
-          const tipo = item.tipo;
-          const startMonth = Math.max(item.month || currentMonthNum, currentMonthNum);
-          for (let m = startMonth; m <= 12; m++) {
-            google.script.run.savePlanningOverrideBackend(year, cat, m, tipo, newVal);
-          }
-        });
+        for (let m = startM; m <= endM; m++) {
+          google.script.run.savePlanningOverrideBackend(year, cat, m, tipo, val);
+        }
       }
     }
 
-    selectedForecastCategories.clear();
-    updateForecastSelectionUI();
+    const monthCount = (endM - startM) + 1;
+    const label = monthCount === 1 ? `mês ${startM}` : `${monthCount} meses`;
+
+    clearForecastRange();
 
     if (planningDataCacheByYear && planningDataCacheByYear[year]) {
       applyPlanningOverrides(planningDataCacheByYear[year]);
@@ -6205,50 +6321,154 @@ $(document).ready(function() {
     }
     loadPlanning(year);
 
-    showRefreshToast(`Previsões de ${count} ${count === 1 ? 'categoria atualizada' : 'categorias atualizadas'} para ${formatCurrency(newVal)}!`);
+    showRefreshToast(`Previsão de ${formatCurrency(val)} salva para "${cat}" (${label})!`);
   }
 
-  // Ações nos botões do painel superior e barra flutuante
-  $(document).on('click', '#btn-batch-delete-forecasts, #btn-top-batch-delete', function() {
-    executeBatchDeleteForecasts();
+  function deleteForecastRange() {
+    if (!activeForecastRange) return;
+    const cat = activeForecastRange.cat;
+    const tipo = activeForecastRange.tipo;
+    const year = activeForecastRange.year;
+    const yStr = String(year);
+    const startM = activeForecastRange.startMonth;
+    const endM = activeForecastRange.endMonth;
+
+    const overrides = getPlanningOverrides();
+    if (!overrides[yStr]) overrides[yStr] = {};
+    if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
+
+    const forecasts = getPlanningForecasts();
+    if (!forecasts[yStr]) forecasts[yStr] = {};
+
+    for (let m = startM; m <= endM; m++) {
+      overrides[yStr][cat][m] = {
+        val: 0,
+        tipo: tipo,
+        isManualOverride: true,
+        isForecast: true,
+        isDeletedForecast: true,
+        updatedAt: Date.now()
+      };
+      if (forecasts[yStr][cat] && forecasts[yStr][cat].months) {
+        delete forecasts[yStr][cat].months[m];
+      }
+    }
+
+    // Se todos os meses futuros da categoria forem zerados, marca como isExcluded
+    const now = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = (year < currentYear) ? 12 : ((year > currentYear) ? 1 : (now.getMonth() + 1));
+    let hasAnyFutureActive = false;
+    for (let m = currentMonthNum; m <= 12; m++) {
+      if (overrides[yStr][cat][m] && overrides[yStr][cat][m].val > 0) {
+        hasAnyFutureActive = true;
+        break;
+      }
+    }
+    if (!hasAnyFutureActive && forecasts[yStr][cat]) {
+      forecasts[yStr][cat].isExcluded = true;
+      forecasts[yStr][cat].forecastValue = 0;
+    }
+
+    try {
+      localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(overrides));
+      localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts));
+    } catch(e) {}
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      if (google.script.run.savePlanningForecastsBackend) {
+        google.script.run.savePlanningForecastsBackend(year, JSON.stringify(forecasts));
+      }
+      if (google.script.run.savePlanningOverrideBackend) {
+        for (let m = startM; m <= endM; m++) {
+          google.script.run.savePlanningOverrideBackend(year, cat, m, tipo, 0);
+        }
+      }
+    }
+
+    const monthCount = (endM - startM) + 1;
+    const label = monthCount === 1 ? `mês ${startM}` : `${monthCount} meses`;
+
+    clearForecastRange();
+
+    if (planningDataCacheByYear && planningDataCacheByYear[year]) {
+      applyPlanningOverrides(planningDataCacheByYear[year]);
+      renderPlanning(planningDataCacheByYear[year]);
+    }
+    loadPlanning(year);
+
+    showRefreshToast(`Previsão de "${cat}" excluída (${label})!`);
+  }
+
+  // Ações nos botões do box de range
+  $(document).on('click', '#btn-range-box-apply', function() {
+    const raw = $('#range-box-input-val').val();
+    const parsed = parseUserInputCurrency(raw);
+    applyForecastRangeValue(parsed);
   });
 
-  $(document).on('click', '#btn-batch-edit-forecasts, #btn-top-batch-edit', function() {
-    openBatchEditForecastModal();
+  $(document).on('click', '#btn-range-box-delete', function() {
+    deleteForecastRange();
   });
 
-  $(document).on('click', '#btn-clear-forecast-selection, #btn-top-batch-cancel', function() {
-    clearForecastSelection();
+  $(document).on('click', '#btn-range-box-close', function() {
+    clearForecastRange();
   });
 
-  $(document).on('click', '#btn-batch-edit-close, #btn-batch-edit-cancel', function() {
-    closeBatchEditForecastModal();
-  });
-
-  $(document).on('click', '#btn-batch-edit-confirm', function() {
-    const rawInput = $('#batch-edit-input-val').val();
-    const parsed = parseUserInputCurrency(rawInput);
-    closeBatchEditForecastModal();
-    executeBatchEditForecasts(parsed);
-  });
-
-  $('#batch-edit-input-val').on('keydown', function(e) {
+  $('#range-box-input-val').on('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      $('#btn-batch-edit-confirm').click();
+      $('#btn-range-box-apply').click();
     } else if (e.key === 'Escape') {
-      closeBatchEditForecastModal();
+      clearForecastRange();
     }
   });
 
-  // --- CONTROLE DE CLIQUE (CÉLULA DE PREVISÃO vs CÉLULA REALIZADA) ---
+  // Se o usuário clicar em qualquer lugar fora da tabela e do box, a seleção é cancelada
+  $(document).on('mousedown', function(e) {
+    if (!activeForecastRange) return;
+    if ($(e.target).closest('#planning-range-forecast-box, .planning-cell-action, #planning-thead, #planning-tbody, #planning-tfoot').length) {
+      return;
+    }
+    clearForecastRange();
+  });
+
+  $(document).on('keydown', function(e) {
+    if (e.key === 'Escape' && activeForecastRange) {
+      clearForecastRange();
+    }
+  });
+
+  // --- CONTROLE DE CLIQUE (CÉLULAS ATUAIS/FUTURAS vs MESES PASSADOS) ---
   let planningCellClickTimer = null;
 
   $(document).on('click', '.planning-cell-action', function(e) {
     if ($(e.target).is('input')) return;
     
     const $td = $(this);
-    
+    const cat = decodeURIComponent($td.attr('data-cat') || '');
+    const month = parseInt($td.attr('data-month'), 10);
+    const tipo = $td.attr('data-tipo');
+    const cellYear = parseInt($td.attr('data-year'), 10) || currentPlanningYear;
+    const hasRealized = $td.attr('data-has-realized') === '1';
+    const isFutureOrCurrent = isPlanningMonthForecast(cellYear, month);
+    const isFutureUnrecorded = isFutureOrCurrent && !hasRealized;
+
+    // Se é mês futuro ou mês vigente sem registro: ativa a seleção em lote / range de previsão!
+    if (isFutureUnrecorded) {
+      if (planningCellClickTimer) {
+        clearTimeout(planningCellClickTimer);
+        planningCellClickTimer = null;
+      }
+      handleForecastCellRangeClick(cat, month, cellYear, tipo, $td);
+      return;
+    }
+
+    // Se o usuário clicar em uma célula de mês passado, cancela eventual seleção de range
+    if (activeForecastRange) {
+      clearForecastRange();
+    }
+
     // Se o usuário deu duplo clique rápido (detail >= 2), cancela o timer de 1 clique
     if (e.detail && e.detail > 1) {
       if (planningCellClickTimer) {
@@ -6263,22 +6483,10 @@ $(document).ready(function() {
       planningCellClickTimer = null;
     }
 
-    // 1 clique:
-    // • Em células de previsão: seleciona/desseleciona a categoria para exclusão de previsão em lote
-    // • Em células realizadas normais: abre o detalhamento de transações (gaveta)
+    // Meses passados: 1 clique abre o detalhamento de transações (gaveta)
     planningCellClickTimer = setTimeout(function() {
       planningCellClickTimer = null;
-      const cat = decodeURIComponent($td.attr('data-cat') || '');
-      const month = parseInt($td.attr('data-month'), 10);
-      const tipo = $td.attr('data-tipo');
-      const isForecast = $td.attr('data-is-forecast') === '1';
-      const cellYear = parseInt($td.attr('data-year'), 10) || currentPlanningYear;
-
-      if (isForecast) {
-        toggleSelectForecastCategory(cat, month, cellYear, tipo, $td);
-      } else {
-        openPlanningDrawer(cat, month, cellYear, tipo);
-      }
+      openPlanningDrawer(cat, month, cellYear, tipo);
     }, 240);
   });
 
@@ -6293,17 +6501,17 @@ $(document).ready(function() {
     const cat = decodeURIComponent($td.attr('data-cat') || '');
     const month = parseInt($td.attr('data-month'), 10);
     const tipo = $td.attr('data-tipo');
-    const isForecast = $td.attr('data-is-forecast') === '1';
     const cellYear = parseInt($td.attr('data-year'), 10) || currentPlanningYear;
-    const rawVal = parseFloat($td.attr('data-raw-value')) || 0;
+    const hasRealized = $td.attr('data-has-realized') === '1';
+    const isFutureOrCurrent = isPlanningMonthForecast(cellYear, month);
 
-    if (isForecast) {
-      // 2 cliques em célula de previsão: ABRE O MODAL DE AÇÃO DE PREVISÃO (que antes abria com 1 clique)!
-      openPlanningForecastActionModal(cat, month, cellYear, tipo, rawVal);
-    } else {
-      // 2 cliques em célula realizada: ativa o modo de edição inline da célula
-      startInlineCellEdit($td);
+    // Mês futuro sem registro é tratado pelo sistema de range no 1º clique
+    if (isFutureOrCurrent && !hasRealized) {
+      return;
     }
+
+    // Meses passados com 2 cliques: modo de edição inline da célula
+    startInlineCellEdit($td);
   });
 
   $(document).on('contextmenu', '.planning-cell-action', function(e) {
