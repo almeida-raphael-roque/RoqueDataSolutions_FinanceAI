@@ -4327,6 +4327,38 @@ function openAddCategoryModal(macroProfile) {
     }
   });
 
+  // Sidebar Collapse / Expand Toggle
+  $(function() {
+    const $sidebar = $('#app-sidebar');
+    const $toggleBtn = $('#btn-toggle-sidebar');
+    const $toggleSymbol = $('#sidebar-toggle-symbol');
+
+    function applySidebarState(isCollapsed) {
+      if (isCollapsed) {
+        $sidebar.addClass('sidebar-collapsed');
+        $toggleSymbol.html('&gt;&gt;');
+        $toggleBtn.attr('title', 'Expandir aba lateral');
+      } else {
+        $sidebar.removeClass('sidebar-collapsed');
+        $toggleSymbol.html('&lt;&lt;');
+        $toggleBtn.attr('title', 'Recolher aba lateral');
+      }
+    }
+
+    const savedState = localStorage.getItem('sidebar-collapsed') === 'true';
+    if (savedState) {
+      applySidebarState(true);
+    }
+
+    $toggleBtn.on('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const willCollapse = !$sidebar.hasClass('sidebar-collapsed');
+      applySidebarState(willCollapse);
+      localStorage.setItem('sidebar-collapsed', willCollapse ? 'true' : 'false');
+    });
+  });
+
 </script><script>
 // State Variables
 let scCurrentDate = new Date();

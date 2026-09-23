@@ -1,56 +1,61 @@
-<aside class="w-64 bg-gray-900 text-white flex flex-col h-full flex-shrink-0">
-  <div class="p-6 flex items-center justify-center border-b border-gray-800">
-    <div id="company-logo-container" class="flex items-center space-x-3 w-full justify-center">
+<aside id="app-sidebar" class="w-64 bg-gray-900 text-white flex flex-col h-full flex-shrink-0 transition-all duration-300 relative select-none">
+  <div id="sidebar-header" class="p-5 flex items-center justify-between border-b border-gray-800 transition-all">
+    <div id="company-logo-container" class="flex items-center space-x-3 overflow-hidden">
       <!-- A logo será carregada da pasta assets -->
       <img src="assets/logo.png" alt="Logo" class="max-w-[150px] max-h-[40px] hidden object-contain" id="company-logo-img" onerror="this.style.display='none'; document.getElementById('company-logo-fallback').classList.remove('hidden');" onload="this.classList.remove('hidden'); document.getElementById('company-logo-fallback').classList.add('hidden');">
       
       <!-- Fallback em texto exibido enquanto a imagem não estiver na pasta assets -->
-      <div id="company-logo-fallback" class="flex items-center space-x-3">
-        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg">
+      <div id="company-logo-fallback" class="flex items-center space-x-3 shrink-0">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg shrink-0">
           <i class="fa-solid fa-coins text-white text-sm"></i>
         </div>
-        <span class="text-lg font-bold tracking-wide">fin<span class="text-primary">.ally</span></span>
+        <span class="text-lg font-bold tracking-wide sidebar-label transition-opacity duration-200">fin<span class="text-primary">.ally</span></span>
       </div>
     </div>
+
+    <!-- Botão discreto cinza claro tipo << / >> para recolher a aba lateral -->
+    <button type="button" id="btn-toggle-sidebar" class="text-gray-400 hover:text-white hover:bg-gray-800/80 border border-gray-700/50 hover:border-gray-600 rounded-md px-2 py-1 transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-sm" title="Recolher aba lateral">
+      <span id="sidebar-toggle-symbol" class="text-xs font-mono font-bold tracking-tighter select-none">&lt;&lt;</span>
+    </button>
   </div>
   
-  <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-    <p class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Principal</p>
+  <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto" id="sidebar-nav">
+    <p id="sidebar-section-title" class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 sidebar-label">Principal</p>
     
-    <a href="#" data-target="page-dashboard" class="nav-item flex items-center space-x-3 px-4 py-2.5 bg-gray-800 border-l-4 border-primary text-white rounded-r transition-all">
-      <i class="fa-solid fa-border-all w-5 text-gray-400"></i>
-      <span class="font-medium text-sm">Visão Geral</span>
+    <a href="#" data-target="page-dashboard" title="Visão Geral" class="nav-item flex items-center space-x-3 px-4 py-2.5 bg-gray-800 border-l-4 border-primary text-white rounded-r transition-all">
+      <i class="fa-solid fa-border-all w-5 text-gray-400 shrink-0 text-center"></i>
+      <span class="font-medium text-sm sidebar-label">Visão Geral</span>
     </a>
     
-    <a href="#" data-target="page-planning" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
-      <i class="fa-solid fa-calendar-days w-5"></i>
-      <span class="font-medium text-sm">Planejamento Anual</span>
+    <a href="#" data-target="page-planning" title="Planejamento Anual" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
+      <i class="fa-solid fa-calendar-days w-5 shrink-0 text-center"></i>
+      <span class="font-medium text-sm sidebar-label">Planejamento Anual</span>
     </a>
     
-    <a href="#" data-target="page-transactions" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
-      <i class="fa-solid fa-list-ul w-5"></i>
-      <span class="font-medium text-sm">Transações</span>
+    <a href="#" data-target="page-transactions" title="Transações" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
+      <i class="fa-solid fa-list-ul w-5 shrink-0 text-center"></i>
+      <span class="font-medium text-sm sidebar-label">Transações</span>
     </a>
     
-    <a href="#" data-target="page-categories" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
-      <i class="fa-solid fa-tags w-5"></i>
-      <span class="font-medium text-sm">Categorias e Regras</span>
+    <a href="#" data-target="page-categories" title="Categorias e Regras" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
+      <i class="fa-solid fa-tags w-5 shrink-0 text-center"></i>
+      <span class="font-medium text-sm sidebar-label">Categorias e Regras</span>
     </a>
 
-    <a href="#" data-target="page-spending-control" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
-      <i class="fa-solid fa-bullseye w-5"></i>
-      <span class="font-medium text-sm">Controle de Gastos</span>
+    <a href="#" data-target="page-spending-control" title="Controle de Gastos" class="nav-item flex items-center space-x-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50 hover:text-white rounded-r border-l-4 border-transparent transition-all">
+      <i class="fa-solid fa-bullseye w-5 shrink-0 text-center"></i>
+      <span class="font-medium text-sm sidebar-label">Controle de Gastos</span>
     </a>
   </nav>
 
   <!-- Dark Mode Toggle Section -->
-  <div class="p-4 border-t border-gray-800">
-    <button id="theme-toggle" class="w-full flex items-center justify-between px-4 py-2.5 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors group">
+  <div class="p-4 border-t border-gray-800" id="sidebar-footer">
+    <button id="theme-toggle" title="Alternar Modo Escuro / Claro" class="w-full flex items-center justify-between px-4 py-2.5 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors group">
       <div class="flex items-center space-x-3">
-        <i class="fa-solid fa-moon w-5 text-gray-400 group-hover:text-primary transition-colors" id="theme-toggle-icon"></i>
-        <span class="font-medium text-sm" id="theme-toggle-text">Modo Claro</span>
+        <i class="fa-solid fa-moon w-5 text-gray-400 group-hover:text-primary transition-colors shrink-0 text-center" id="theme-toggle-icon"></i>
+        <span class="font-medium text-sm sidebar-label" id="theme-toggle-text">Modo Claro</span>
       </div>
-      <div class="w-8 h-4 bg-gray-700 rounded-full relative transition-colors shadow-inner" id="theme-toggle-track">
+      <div class="w-8 h-4 bg-gray-700 rounded-full relative transition-colors shadow-inner sidebar-label" id="theme-toggle-track">
         <div class="w-3 h-3 bg-gray-400 rounded-full absolute top-0.5 left-1 transition-all" id="theme-toggle-thumb"></div>
       </div>
     </button>
