@@ -6134,10 +6134,26 @@ $(document).ready(function() {
   let activeForecastRange = null; 
   // Objeto: { cat: string, tipo: string, year: number, anchorMonth: number, startMonth: number, endMonth: number }
 
+  function getTdsForRange() {
+    if (!activeForecastRange) return $();
+    return $('td.planning-cell-action').filter(function() {
+      const cCat = decodeURIComponent($(this).attr('data-cat') || '');
+      const cYear = parseInt($(this).attr('data-year'), 10);
+      const cMonth = parseInt($(this).attr('data-month'), 10);
+      return cCat === activeForecastRange.cat &&
+             cYear === activeForecastRange.year &&
+             cMonth >= activeForecastRange.startMonth &&
+             cMonth <= activeForecastRange.endMonth;
+    });
+  }
+
   function clearForecastRange() {
     activeForecastRange = null;
     updateForecastRangeHighlight();
-    $('#planning-range-forecast-box').addClass('hidden');
+    $('#planning-range-forecast-box').addClass('hidden').css({
+      display: 'none',
+      visibility: 'hidden'
+    });
   }
 
   function updateForecastRangeHighlight() {
@@ -6145,13 +6161,8 @@ $(document).ready(function() {
     
     if (!activeForecastRange) return;
     
-    const encodedCat = encodeURIComponent(activeForecastRange.cat);
-    $(`td.planning-cell-action[data-cat="${encodedCat}"][data-year="${activeForecastRange.year}"]`).each(function() {
-      const m = parseInt($(this).attr('data-month'), 10);
-      if (m >= activeForecastRange.startMonth && m <= activeForecastRange.endMonth) {
-        $(this).addClass('planning-range-selected ring-2 ring-inset ring-purple-600 dark:ring-purple-400 bg-purple-100 dark:bg-purple-950/70 font-bold');
-      }
-    });
+    const $matching = getTdsForRange();
+    $matching.addClass('planning-range-selected ring-2 ring-inset ring-purple-600 dark:ring-purple-400 bg-purple-100 dark:bg-purple-950/70 font-bold');
   }
 
   function handleForecastCellRangeClick(cat, month, cellYear, tipo, $td) {
@@ -6180,17 +6191,16 @@ $(document).ready(function() {
   function showForecastRangeBox() {
     if (!activeForecastRange) return;
 
-    const $box = $('#planning-range-forecast-box');
-    const encodedCat = encodeURIComponent(activeForecastRange.cat);
-    const $matchingTds = $(`td.planning-cell-action[data-cat="${encodedCat}"][data-year="${activeForecastRange.year}"]`).filter(function() {
-      const m = parseInt($(this).attr('data-month'), 10);
-      return m >= activeForecastRange.startMonth && m <= activeForecastRange.endMonth;
-    });
+    let $box = $('#planning-range-forecast-box');
+    if (!$box.length) return;
 
-    if (!$matchingTds.length) {
-      $box.addClass('hidden');
-      return;
+    // Garante que o box seja filho direto de <body> para que position: fixed seja em relação ao viewport real
+    if ($box.parent()[0] !== document.body) {
+      $('body').append($box);
+      $box = $('#planning-range-forecast-box');
     }
+
+    const $matchingTds = getTdsForRange();
 
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
     const monthAbbr = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -6208,9 +6218,10 @@ $(document).ready(function() {
     }
     $('#range-box-months-text').text(rangeLabel);
 
-    // Se o box estava oculto, preenche com o valor atual da primeira célula (se houver)
-    if ($box.hasClass('hidden')) {
-      const firstVal = parseFloat($matchingTds.first().attr('data-raw-value')) || 0;
+    // Se estava fechado ou mudou de categoria, carrega o valor da primeira célula
+    if ($box.is(':hidden') || $box.hasClass('hidden') || $box.attr('data-last-cat') !== activeForecastRange.cat) {
+      $box.attr('data-last-cat', activeForecastRange.cat);
+      const firstVal = $matchingTds.length ? (parseFloat($matchingTds.first().attr('data-raw-value')) || 0) : 0;
       if (firstVal > 0) {
         $('#range-box-input-val').val(firstVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       } else {
@@ -6218,41 +6229,56 @@ $(document).ready(function() {
       }
     }
 
-    $box.removeClass('hidden');
+    // Torna visível imediatamente com z-index de topo absoluto
+    $box.removeClass('hidden').css({
+      display: 'block',
+      visibility: 'visible',
+      opacity: '1',
+      position: 'fixed',
+      zIndex: 99999
+    });
 
-    // Posicionamento inteligente próximo ao range selecionado
-    const firstRect = $matchingTds.first()[0].getBoundingClientRect();
-    const lastRect = $matchingTds.last()[0].getBoundingClientRect();
-    const rangeLeft = Math.min(firstRect.left, lastRect.left);
-    const rangeRight = Math.max(firstRect.right, lastRect.right);
-    const rangeCenterX = (rangeLeft + rangeRight) / 2;
-    const rangeTop = firstRect.top;
-    const cellHeight = firstRect.height;
-
+    // Posição no viewport
     const boxWidth = 320;
     const boxHeight = 220;
     const winWidth = window.innerWidth;
     const winHeight = window.innerHeight;
 
-    let top = rangeTop + cellHeight + 10;
-    if (top + boxHeight > winHeight - 16) {
-      top = rangeTop - boxHeight - 10;
-    }
-    if (top < 16) top = 16;
+    let top = Math.round(winHeight / 2 - (boxHeight / 2));
+    let left = Math.round(winWidth / 2 - (boxWidth / 2));
 
-    let left = rangeCenterX - (boxWidth / 2);
-    if (left < 16) left = 16;
-    if (left + boxWidth > winWidth - 16) left = winWidth - boxWidth - 16;
+    if ($matchingTds.length) {
+      const firstRect = $matchingTds.first()[0].getBoundingClientRect();
+      const lastRect = $matchingTds.last()[0].getBoundingClientRect();
+      const rangeLeft = Math.min(firstRect.left, lastRect.left);
+      const rangeRight = Math.max(firstRect.right, lastRect.right);
+      const rangeCenterX = (rangeLeft + rangeRight) / 2;
+      const rangeTop = firstRect.top;
+      const cellHeight = firstRect.height;
+
+      // Preferencialmente posiciona logo abaixo da célula
+      top = rangeTop + cellHeight + 10;
+      // Se passar da borda inferior da tela, posiciona acima
+      if (top + boxHeight > winHeight - 16) {
+        top = rangeTop - boxHeight - 10;
+      }
+      // Clamping seguro dentro da janela
+      if (top < 16) top = 16;
+      if (top + boxHeight > winHeight - 16) top = winHeight - boxHeight - 16;
+
+      left = rangeCenterX - (boxWidth / 2);
+      if (left < 16) left = 16;
+      if (left + boxWidth > winWidth - 16) left = winWidth - boxWidth - 16;
+    }
 
     $box.css({
-      position: 'fixed',
-      top: `${top}px`,
-      left: `${left}px`
+      top: `${Math.round(top)}px`,
+      left: `${Math.round(left)}px`
     });
 
     setTimeout(() => {
       $('#range-box-input-val').focus().select();
-    }, 30);
+    }, 40);
   }
 
   function applyForecastRangeValue(val) {
@@ -6427,7 +6453,7 @@ $(document).ready(function() {
   // Se o usuário clicar em qualquer lugar fora da tabela e do box, a seleção é cancelada
   $(document).on('mousedown', function(e) {
     if (!activeForecastRange) return;
-    if ($(e.target).closest('#planning-range-forecast-box, .planning-cell-action, #planning-thead, #planning-tbody, #planning-tfoot').length) {
+    if ($(e.target).closest('#planning-range-forecast-box, #planning-matrix-container, .planning-cell-action, #planning-thead, #planning-tbody, #planning-tfoot').length) {
       return;
     }
     clearForecastRange();
