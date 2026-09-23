@@ -6238,9 +6238,9 @@ $(document).ready(function() {
       zIndex: 99999
     });
 
-    // Posição no viewport
-    const boxWidth = 320;
-    const boxHeight = 220;
+    // Dimensões dinâmicas da barra horizontal
+    const boxWidth = $box.outerWidth() || 520;
+    const boxHeight = $box.outerHeight() || 50;
     const winWidth = window.innerWidth;
     const winHeight = window.innerHeight;
 
@@ -6256,16 +6256,17 @@ $(document).ready(function() {
       const rangeTop = firstRect.top;
       const cellHeight = firstRect.height;
 
-      // Preferencialmente posiciona logo abaixo da célula
+      // Preferencialmente posiciona logo abaixo da linha com margem de 10px (não encobre a linha)
       top = rangeTop + cellHeight + 10;
-      // Se passar da borda inferior da tela, posiciona acima
+      // Se passar da borda inferior da tela, posiciona acima da linha com margem de 10px
       if (top + boxHeight > winHeight - 16) {
         top = rangeTop - boxHeight - 10;
       }
-      // Clamping seguro dentro da janela
+      // Clamping seguro dentro da janela para nunca sumir
       if (top < 16) top = 16;
       if (top + boxHeight > winHeight - 16) top = winHeight - boxHeight - 16;
 
+      // Centralizado horizontalmente no range selecionado
       left = rangeCenterX - (boxWidth / 2);
       if (left < 16) left = 16;
       if (left + boxWidth > winWidth - 16) left = winWidth - boxWidth - 16;
