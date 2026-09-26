@@ -6055,7 +6055,7 @@ $(document).ready(function() {
     saldoHtml += `<td class="px-4 py-3 text-right font-bold ${totalColorClass} border-l border-gray-300 dark:border-gray-600">${formatCurrency(totalBalanceYear)}</td></tr>`;
     
     // 3. Linha Fluxo de Caixa (última linha da matriz)
-    const today = new Date();
+    const today = window.getPlanningCurrentDate ? window.getPlanningCurrentDate() : new Date();
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth() + 1; // 1-12
     const targetYear = data.year;
@@ -6082,9 +6082,10 @@ $(document).ready(function() {
       const isPast = (targetYear < currentYear) || (targetYear === currentYear && m < currentMonth);
       const isCurrent = (targetYear === currentYear && m === currentMonth);
       const isSubsequent = (targetYear > currentYear) || (targetYear === currentYear && m > currentMonth);
+      const isEditable = isPast || isCurrent;
 
       const mStr = String(m);
-      const hasManualOverride = isPast && (yearOverrides[mStr] !== undefined && yearOverrides[mStr] !== null);
+      const hasManualOverride = isEditable && (yearOverrides[mStr] !== undefined && yearOverrides[mStr] !== null);
 
       let currentVal = 0;
       let isManual = false;
@@ -6123,15 +6124,25 @@ $(document).ready(function() {
       const displayVal = currentVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const manualDot = isManual ? '<span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mr-1 shrink-0" title="Alterado manualmente"></span>' : '';
 
-      if (isPast) {
+      if (isEditable) {
+        let editPrompt = '';
+        if (isManual) {
+          editPrompt = 'Valor alterado manualmente. Clique para editar ou botão direito para restaurar o cálculo automático.';
+        } else if (isCurrent) {
+          editPrompt = 'Mês vigente. Clique para alterar o fluxo de caixa acumulado manualmente.';
+        } else {
+          editPrompt = 'Mês passado. Clique para alterar o fluxo de caixa acumulado manualmente.';
+        }
+
         fluxoCaixaCellsHtml += `
           <td class="planning-cashflow-cell px-3 py-3 text-center cursor-pointer select-none transition-colors hover:bg-blue-100/80 dark:hover:bg-blue-900/50 relative group/cf ${textClass}"
               data-month="${m}"
               data-year="${targetYear}"
               data-raw-value="${currentVal}"
               data-is-manual="${isManual ? '1' : '0'}"
-              data-is-past="1"
-              title="${isManual ? 'Valor alterado manualmente. Clique para editar ou botão direito para restaurar o cálculo automático.' : 'Mês passado. Clique para alterar o fluxo de caixa acumulado manualmente.'}">
+              data-is-past="${isPast ? '1' : '0'}"
+              data-is-current="${isCurrent ? '1' : '0'}"
+              title="${editPrompt}">
             <div class="flex items-center justify-center gap-0.5">
               ${manualDot}
               <span class="cf-val">${displayVal}</span>
@@ -6139,9 +6150,7 @@ $(document).ready(function() {
             </div>
           </td>`;
       } else {
-        const subTitle = isCurrent
-          ? 'Mês vigente: Fluxo de Caixa Acumulado anterior + Entradas - Saídas'
-          : 'Mês subsequente: Fluxo de Caixa Acumulado anterior + Entradas - Saídas';
+        const subTitle = 'Mês subsequente: Fluxo de Caixa Acumulado anterior + Entradas - Saídas';
         fluxoCaixaCellsHtml += `
           <td class="px-3 py-3 text-center select-none ${textClass}"
               data-month="${m}"
