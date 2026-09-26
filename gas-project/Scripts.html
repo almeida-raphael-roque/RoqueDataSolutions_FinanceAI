@@ -473,7 +473,7 @@ function openAddCategoryModal(macroProfile) {
   }
 
   function applyLocalRulesToTransactions() {
-    if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' && Array.isArray(GLOBAL_MOCK_TRANSACTIONS)) {
+    if (typeof google === 'undefined' && typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' && Array.isArray(GLOBAL_MOCK_TRANSACTIONS)) {
       GLOBAL_MOCK_TRANSACTIONS.forEach(t => {
         const rawDesc = String(t.descricao || '').trim().toUpperCase();
         const normDesc = typeof normalizeDescription === 'function' ? normalizeDescription(t.descricao).toUpperCase() : rawDesc;
@@ -828,21 +828,48 @@ function openAddCategoryModal(macroProfile) {
       navigateTo(target, title);
     });
     
-    // Initial load: sync Single Source of Truth
+    // Initial load: sync Single Source of Truth directly from Google Sheets
     if (typeof google !== 'undefined' && google.script && google.script.run) {
-      google.script.run
-        .withSuccessHandler(function(data) {
-          if (data && data.categories) {
-            GLOBAL_CATEGORIES = data.categories;
-            localStorage.setItem('finance_global_categories', JSON.stringify(GLOBAL_CATEGORIES));
-            if (typeof renderCategoriesList === 'function') renderCategoriesList();
-            if (typeof populateRuleCategorySelect === 'function') populateRuleCategorySelect();
-            if (typeof updateCategoryFilterDropdown === 'function') updateCategoryFilterDropdown();
-          }
-        })
-        .withFailureHandler(function() {
-        })
-    } else {
+      if (typeof google.script.run.getGlobalCategories === 'function') {
+        google.script.run
+          .withSuccessHandler(function(data) {
+            const cats = Array.isArray(data) ? data : (data && data.categories ? data.categories : null);
+            if (cats && cats.length > 0) {
+              GLOBAL_CATEGORIES = cats;
+              try {
+                localStorage.setItem('finance_global_categories', JSON.stringify(GLOBAL_CATEGORIES));
+              } catch(e) {}
+              if (typeof renderCategoriesList === 'function') renderCategoriesList();
+              if (typeof populateRuleCategorySelect === 'function') populateRuleCategorySelect();
+              if (typeof updateCategoryFilterDropdown === 'function') updateCategoryFilterDropdown();
+            }
+          })
+          .withFailureHandler(function(err) {
+            console.warn('Could not load categories from Google Sheets:', err);
+          })
+          .getGlobalCategories();
+      }
+
+      if (typeof google.script.run.getUserRules === 'function') {
+        google.script.run
+          .withSuccessHandler(function(rules) {
+            if (Array.isArray(rules) && rules.length > 0) {
+              GLOBAL_RULES = rules;
+              try {
+                localStorage.setItem('finance_user_rules', JSON.stringify(GLOBAL_RULES));
+              } catch(e) {}
+              if (typeof renderRulesList === 'function') renderRulesList();
+            }
+          })
+          .withFailureHandler(function(err) {
+            console.warn('Could not load rules from Google Sheets:', err);
+          })
+          .getUserRules();
+      }
+
+      if (typeof loadLinkedSheetInfo === 'function') {
+        loadLinkedSheetInfo();
+      }
     }
 
     // Helper para preencher dinamicamente as categorias no modal de Nova Transação
@@ -1942,7 +1969,7 @@ function openAddCategoryModal(macroProfile) {
     const year = $('#filter-year').val();
     const month = $('#filter-month').val();
     
-    if (typeof google !== 'undefined' && google.script) {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
       google.script.run
         .withSuccessHandler(function(data) {
           $('#dashboard-loading').hide();
@@ -4501,7 +4528,10 @@ function scRender() {
   scCurrentDate.setMonth(m);
   scCurrentDate.setFullYear(y);
   
-  const txs = (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : [];
+  const isGoogle = (typeof google !== 'undefined' && google.script && google.script.run);
+  const txs = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
+    ? currentLoadedTransactions
+    : (!isGoogle && typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' ? GLOBAL_MOCK_TRANSACTIONS : []);
   const parsedTxs = txs.map(t => {
     const d = parseLocalDateString(t.data);
     return { ...t, parsedDate: d };
@@ -5124,11 +5154,13 @@ $(document).ready(function() {
     // 1. Obter dados da matriz de planejamento (planningData ou cache)
     const pData = planningData || planningDataCache;
 
-    // Obter todas as transações com categoria atualizada (caso existam em memória)
+    // Obter transações reais da planilha (se já em memória).
+    // NUNCA usar GLOBAL_MOCK_TRANSACTIONS quando conectado ao Google Sheets!
+    const isGoogleConnected = (typeof google !== 'undefined' && google.script && google.script.run);
     let allTxs = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
       ? currentLoadedTransactions
-      : ((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined') ? GLOBAL_MOCK_TRANSACTIONS : []);
-    if (typeof applyCategoryOverrides === 'function') {
+      : (!isGoogleConnected && typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' ? GLOBAL_MOCK_TRANSACTIONS : []);
+    if (typeof applyCategoryOverrides === 'function' && allTxs.length > 0) {
       allTxs = applyCategoryOverrides(allTxs);
     }
 
@@ -5181,28 +5213,30 @@ $(document).ready(function() {
       }
     }
 
-    // 1B. Complementar ou consolidar com transações brutas de allTxs
-    allTxs.forEach(t => {
-      if (!t.categoria || !t.data) return;
-      const d = parseLocalDateString(t.data);
-      if (!d) return;
-      const cat = String(t.categoria).trim();
-      const val = Math.abs(parseFloat(t.valor) || 0);
-      const m = d.getMonth() + 1;
-      const y = d.getFullYear();
+    // 1B. Complementar ou consolidar com transações brutas de allTxs (apenas se houver transações carregadas)
+    if (allTxs && allTxs.length > 0) {
+      allTxs.forEach(t => {
+        if (!t.categoria || !t.data) return;
+        const d = parseLocalDateString(t.data);
+        if (!d) return;
+        const cat = String(t.categoria).trim();
+        const val = Math.abs(parseFloat(t.valor) || 0);
+        const m = d.getMonth() + 1;
+        const y = d.getFullYear();
 
-      if (y === targetYear) {
-        if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
-        if (!catMonthlyAmounts[cat][m]) {
-          catMonthlyAmounts[cat][m] = (catMonthlyAmounts[cat][m] || 0) + val;
+        if (y === targetYear) {
+          if (!catMonthlyAmounts[cat]) catMonthlyAmounts[cat] = {};
+          if (!catMonthlyAmounts[cat][m]) {
+            catMonthlyAmounts[cat][m] = (catMonthlyAmounts[cat][m] || 0) + val;
+          }
+          if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
+        } else if (y === (targetYear - 1)) {
+          if (!catPrevMonthlyAmounts[cat]) catPrevMonthlyAmounts[cat] = {};
+          catPrevMonthlyAmounts[cat][m] = (catPrevMonthlyAmounts[cat][m] || 0) + val;
+          if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
         }
-        if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
-      } else if (y === (targetYear - 1)) {
-        if (!catPrevMonthlyAmounts[cat]) catPrevMonthlyAmounts[cat] = {};
-        catPrevMonthlyAmounts[cat][m] = (catPrevMonthlyAmounts[cat][m] || 0) + val;
-        if (t.tipo && !catTipoMap[cat]) catTipoMap[cat] = t.tipo;
-      }
-    });
+      });
+    }
 
     // Unir todas as categorias conhecidas
     const allCategoryNames = new Set([
@@ -7059,7 +7093,10 @@ $(document).ready(function() {
     } else {
       setTimeout(() => {
         $('#planning-drawer-loading').addClass('hidden');
-        renderDrawerTransactions((typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' ? GLOBAL_MOCK_TRANSACTIONS : []), cat, month, year, tipo);
+        const fallbackRows = (typeof currentLoadedTransactions !== 'undefined' && currentLoadedTransactions.length > 0)
+          ? currentLoadedTransactions
+          : (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' ? GLOBAL_MOCK_TRANSACTIONS : []);
+        renderDrawerTransactions(fallbackRows, cat, month, year, tipo);
       }, 200);
     }
   }
