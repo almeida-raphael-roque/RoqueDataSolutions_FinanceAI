@@ -5582,7 +5582,7 @@ $(document).ready(function() {
     // Garante que todas as categorias válidas com previsão constem na matriz de visualização
     Object.keys(yearFc).forEach(cat => {
       const catFc = yearFc[cat];
-      if (!catFc || !catFc.months) return;
+      if (!catFc || !catFc.months || catFc.isExcluded) return;
 
       const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES))
         ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
@@ -5739,6 +5739,36 @@ $(document).ready(function() {
       });
     }
 
+    // Remove da matriz categorias que foram excluídas das previsões e não possuem nenhum realizado no ano
+    if (data.incomeCategories) {
+      Object.keys(data.incomeCategories).forEach(cat => {
+        const catFc = yearFc[cat];
+        if (catFc && catFc.isExcluded) {
+          const cells = data.incomeCategories[cat];
+          const hasRealized = Array.isArray(cells) && cells.some(c => c && c.realized && c.realized > 0);
+          if (!hasRealized) {
+            delete data.incomeCategories[cat];
+          }
+        }
+      });
+    }
+    if (data.expenseMacros) {
+      ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+        if (data.expenseMacros[macro]) {
+          Object.keys(data.expenseMacros[macro]).forEach(cat => {
+            const catFc = yearFc[cat];
+            if (catFc && catFc.isExcluded) {
+              const cells = data.expenseMacros[macro][cat];
+              const hasRealized = Array.isArray(cells) && cells.some(c => c && c.realized && c.realized > 0);
+              if (!hasRealized) {
+                delete data.expenseMacros[macro][cat];
+              }
+            }
+          });
+        }
+      });
+    }
+
     // 3. Recalcula monthlyTotals
     if (!data.monthlyTotals || data.monthlyTotals.length < 12) {
       data.monthlyTotals = Array.from({length: 12}, () => ({ income: 0, expense: 0, balance: 0 }));
@@ -5800,17 +5830,20 @@ $(document).ready(function() {
     };
   }
 
-  function parseUserInputCurrency(valStr) {
+  function parseUserInputCurrency(valStr, allowNegative = false) {
     if (!valStr || typeof valStr !== 'string') return 0;
     let str = valStr.trim().replace(/R\$/g, '').trim();
     if (str === '' || str === '-') return 0;
+    const isNeg = str.startsWith('-');
+    if (isNeg) str = str.substring(1).trim();
     if (str.includes('.') && str.includes(',')) {
       str = str.replace(/\./g, '').replace(',', '.');
     } else if (str.includes(',')) {
       str = str.replace(',', '.');
     }
     const num = parseFloat(str);
-    return isNaN(num) ? 0 : Math.abs(num);
+    if (isNaN(num)) return 0;
+    return (allowNegative && isNeg) ? -Math.abs(num) : Math.abs(num);
   }
 
   function renderCategoryMonthCell(valObj, cat, monthNum, tipo, year) {
@@ -6399,7 +6432,7 @@ $(document).ready(function() {
     const year = (!isNaN(cellYear) && cellYear > 2000) ? cellYear : (currentPlanningYear || getActivePlanningYear());
 
     const initialRawVal = parseFloat($td.data('initial-raw-val')) || 0;
-    const parsedVal = parseUserInputCurrency(rawText);
+    const parsedVal = parseUserInputCurrency(rawText, true);
 
     const hasChanged = Math.abs(parsedVal - initialRawVal) > 0.005;
     if (!hasChanged) {
@@ -6491,35 +6524,51 @@ $(document).ready(function() {
     // Atualiza classes visuais nas linhas do planejamento
     $('#planning-tbody tr').each(function() {
       const $tr = $(this);
-      const $fcCell = $tr.find('td.planning-cell-action[data-is-forecast="1"]').first();
-      if ($fcCell.length) {
-        const cat = decodeURIComponent($fcCell.attr('data-cat') || '');
-        const isSelected = selectedForecastCategories.has(cat);
-        if (isSelected) {
-          $tr.addClass('category-forecast-selected bg-purple-50/80 dark:bg-purple-950/40 ring-1 ring-inset ring-purple-400 dark:ring-purple-600');
-          const $nameSpan = $tr.find('.planning-child-cat span.truncate');
-          if ($nameSpan.length && !$tr.find('.cat-select-badge').length) {
-            $nameSpan.before('<span class="cat-select-badge inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-600 text-white text-[9px] mr-1.5 shrink-0 shadow-xs"><i class="fa-solid fa-check"></i></span>');
-          }
-        } else {
-          $tr.removeClass('category-forecast-selected bg-purple-50/80 dark:bg-purple-950/40 ring-1 ring-inset ring-purple-400 dark:ring-purple-600');
-          $tr.find('.cat-select-badge').remove();
+      const $firstCell = $tr.find('td.planning-cell-action').first();
+      if (!$firstCell.length) return;
+      const cat = decodeURIComponent($firstCell.attr('data-cat') || '');
+      const isSelected = selectedForecastCategories.has(cat);
+
+      if (isSelected) {
+        $tr.addClass('category-forecast-selected bg-purple-50/50 dark:bg-purple-950/30');
+        const $nameSpan = $tr.find('.planning-child-cat span.truncate');
+        if ($nameSpan.length && !$tr.find('.cat-select-badge').length) {
+          $nameSpan.before('<span class="cat-select-badge inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-600 text-white text-[9px] mr-1.5 shrink-0 shadow-xs"><i class="fa-solid fa-check"></i></span>');
         }
+        // Destaca a linha inteira APENAS da parte de previsão:
+        $tr.find('td.planning-cell-action').each(function() {
+          const $c = $(this);
+          const cM = parseInt($c.attr('data-month'), 10);
+          const cY = parseInt($c.attr('data-year'), 10) || currentPlanningYear;
+          const cRealized = $c.attr('data-has-realized') === '1';
+          const cIsFcMonth = isPlanningMonthForecast(cY, cM);
+          const isFc = $c.attr('data-is-forecast') === '1' || (cIsFcMonth && !cRealized);
+
+          if (isFc) {
+            $c.addClass('forecast-part-selected ring-2 ring-inset ring-purple-600 dark:ring-purple-400 bg-purple-100 dark:bg-purple-900/60 font-bold text-purple-700 dark:text-purple-300');
+          } else {
+            $c.removeClass('forecast-part-selected ring-2 ring-inset ring-purple-600 dark:ring-purple-400 bg-purple-100 dark:bg-purple-900/60 font-bold text-purple-700 dark:text-purple-300');
+          }
+        });
+      } else {
+        $tr.removeClass('category-forecast-selected bg-purple-50/50 dark:bg-purple-950/30');
+        $tr.find('.cat-select-badge').remove();
+        $tr.find('td.planning-cell-action').removeClass('forecast-part-selected ring-2 ring-inset ring-purple-600 dark:ring-purple-400 bg-purple-100 dark:bg-purple-900/60 font-bold text-purple-700 dark:text-purple-300');
       }
     });
 
-    const countLabel = `${count} ${count === 1 ? 'categoria selecionada' : 'categorias selecionadas'}`;
+    const countLabel = count === 1 ? '1 linha de previsão selecionada' : `${count} linhas de previsão selecionadas`;
     const names = Array.from(selectedForecastCategories.keys()).join(', ');
 
     // Controla o painel superior de ações em lote
     const $topBar = $('#planning-top-selection-bar');
     if ($topBar.length) {
       if (count > 0) {
-        $topBar.removeClass('hidden');
+        $topBar.removeClass('hidden').css('display', 'flex');
         $('#top-selection-count').text(countLabel);
         $('#top-selection-categories-preview').text(names).attr('title', names);
       } else {
-        $topBar.addClass('hidden');
+        $topBar.addClass('hidden').hide();
       }
     }
 
@@ -6527,11 +6576,11 @@ $(document).ready(function() {
     const $floatBar = $('#planning-batch-forecast-bar');
     if ($floatBar.length) {
       if (count > 0) {
-        $floatBar.removeClass('hidden');
+        $floatBar.removeClass('hidden').css('display', 'flex');
         $('#batch-forecast-count').text(countLabel);
         $('#batch-forecast-categories-list').text(names).attr('title', names);
       } else {
-        $floatBar.addClass('hidden');
+        $floatBar.addClass('hidden').hide();
       }
     }
   }
@@ -6558,7 +6607,7 @@ $(document).ready(function() {
     categoriesArray.forEach(item => {
       const cat = item.cat;
       const tipo = item.tipo;
-      const startMonth = Math.max(item.month || currentMonthNum, currentMonthNum);
+      const startMonth = currentMonthNum;
 
       if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
       
@@ -6597,7 +6646,7 @@ $(document).ready(function() {
         categoriesArray.forEach(item => {
           const cat = item.cat;
           const tipo = item.tipo;
-          const startMonth = Math.max(item.month || currentMonthNum, currentMonthNum);
+          const startMonth = currentMonthNum;
           for (let m = startMonth; m <= 12; m++) {
             google.script.run.savePlanningOverrideBackend(year, cat, m, tipo, 0);
           }
@@ -6616,7 +6665,7 @@ $(document).ready(function() {
 
     loadPlanning(year);
 
-    showRefreshToast(`Previsões de ${count} ${count === 1 ? 'categoria excluída' : 'categorias excluídas'} com sucesso!`);
+    showRefreshToast(`Previsões de ${count} ${count === 1 ? 'linha excluída' : 'linhas excluídas'} com sucesso!`);
   }
 
   // --- AÇÕES DE SELEÇÃO EM LOTE DE PREVISÕES POR CATEGORIA (BARRAS SUPERIOR E FLUTUANTE) ---
@@ -6971,8 +7020,29 @@ $(document).ready(function() {
   });
 
   $(document).on('keydown', function(e) {
-    if (e.key === 'Escape' && activeForecastRange) {
-      clearForecastRange();
+    if (e.key === 'Escape') {
+      if (activeForecastRange) {
+        clearForecastRange();
+      }
+      if (selectedForecastCategories && selectedForecastCategories.size > 0) {
+        clearForecastSelection();
+      }
+    }
+  });
+
+  // Controle de clique no botão de instruções "i" da matriz
+  $(document).on('click', '#btn-planning-info', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const $tooltip = $('#planning-info-tooltip');
+    if ($tooltip.length) {
+      $tooltip.toggleClass('!block');
+    }
+  });
+
+  $(document).on('click', function(e) {
+    if (!$(e.target).closest('#btn-planning-info, #planning-info-tooltip').length) {
+      $('#planning-info-tooltip').removeClass('!block');
     }
   });
 
@@ -6990,8 +7060,25 @@ $(document).ready(function() {
     const hasRealized = $td.attr('data-has-realized') === '1';
     const isFutureOrCurrent = isPlanningMonthForecast(cellYear, month);
     const isFutureUnrecorded = isFutureOrCurrent && !hasRealized;
+    const isForecastCell = $td.attr('data-is-forecast') === '1' || isFutureUnrecorded;
 
-    // Se é mês futuro ou mês vigente sem registro: ativa a seleção em lote / range de previsão!
+    // SELEÇÃO COM CTRL: Segurar "Ctrl" e clicar em célula de previsão seleciona a linha inteira da previsão
+    // O box de seleção normal NÃO abrirá! O box de exclusão em grupo já abrirá desde a 1ª seleção.
+    if (e.ctrlKey || e.metaKey) {
+      if (isForecastCell) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (planningCellClickTimer) {
+          clearTimeout(planningCellClickTimer);
+          planningCellClickTimer = null;
+        }
+        clearForecastRange(); // Garante que o box de seleção normal NÃO abrirá
+        toggleSelectForecastCategory(cat, month, cellYear, tipo, $td);
+        return;
+      }
+    }
+
+    // Se é mês futuro ou mês vigente sem registro: ativa a seleção em lote / range de previsão normal (SEM Ctrl)
     if (isFutureUnrecorded) {
       if (planningCellClickTimer) {
         clearTimeout(planningCellClickTimer);

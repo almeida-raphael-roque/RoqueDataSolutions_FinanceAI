@@ -1,69 +1,4 @@
-<div id="page-planning" class="hidden-page page-view h-full flex flex-col space-y-6 animate-fade-in p-4 md:p-6">
-  <!-- Header -->
-  <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
-        <i class="fa-solid fa-calendar-days text-primary"></i>
-        <span>Planejamento Anual</span>
-      </h1>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Visão consolidada de receitas e despesas da matriz anual.</p>
-    </div>
-    <div class="flex items-center gap-3">
-      <div id="planning-current-month-badge" class="px-3 py-1.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-bold uppercase tracking-wider animate-pulse hidden">
-        Hoje: <span id="planning-current-month-text"></span>
-      </div>
-      <select id="planning-year-select" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary focus:border-primary block w-32 p-2.5 shadow-sm outline-none transition-colors">
-        <!-- Options populated by JS -->
-      </select>
-      <button id="btn-refresh-planning" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm focus:outline-none">
-        <i class="fa-solid fa-arrows-rotate"></i>
-      </button>
-    </div>
-  </div>
-
-  <!-- Summary Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-    <div class="glass-card bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-100 dark:border-gray-700 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
-      <div class="absolute top-0 right-0 w-16 h-16 bg-emerald-100 dark:bg-emerald-900/20 rounded-bl-full -mr-8 -mt-8 z-0"></div>
-      <div class="relative z-10">
-        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Receitas Anuais</p>
-        <h3 id="plan-summary-income" class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">R$ 0,00</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 flex flex-col gap-1">
-          <span class="flex justify-between"><span>Realizado:</span> <span id="plan-summary-income-realized" class="font-medium text-gray-700 dark:text-gray-300">R$ 0,00</span></span>
-          <span class="flex justify-between"><span>Previsto:</span> <span id="plan-summary-income-planned" class="font-medium text-gray-700 dark:text-gray-300">R$ 0,00</span></span>
-        </p>
-      </div>
-    </div>
-    
-    <div class="glass-card bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-100 dark:border-gray-700 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
-      <div class="absolute top-0 right-0 w-16 h-16 bg-rose-100 dark:bg-rose-900/20 rounded-bl-full -mr-8 -mt-8 z-0"></div>
-      <div class="relative z-10">
-        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Despesas Anuais</p>
-        <h3 id="plan-summary-expense" class="text-2xl font-bold text-rose-600 dark:text-rose-400">R$ 0,00</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 flex flex-col gap-1">
-          <span class="flex justify-between"><span>Realizado:</span> <span id="plan-summary-expense-realized" class="font-medium text-gray-700 dark:text-gray-300">R$ 0,00</span></span>
-          <span class="flex justify-between"><span>Previsto:</span> <span id="plan-summary-expense-planned" class="font-medium text-gray-700 dark:text-gray-300">R$ 0,00</span></span>
-        </p>
-      </div>
-    </div>
-    
-    <div class="glass-card bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between transition-all hover:shadow-md">
-      <div>
-        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Saldo Atual</p>
-        <h3 id="plan-summary-current-balance" class="text-2xl font-bold text-gray-900 dark:text-white transition-colors">R$ 0,00</h3>
-      </div>
-      <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Balanço acumulado até hoje</p>
-    </div>
-    
-    <div class="glass-card bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between transition-all hover:shadow-md">
-      <div>
-        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Projeção Fim de Ano</p>
-        <h3 id="plan-summary-projected-balance" class="text-2xl font-bold text-gray-900 dark:text-white transition-colors">R$ 0,00</h3>
-      </div>
-      <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Balanço final estimado</p>
-    </div>
-  </div>
-
+<div id="page-planning" class="hidden-page page-view h-full flex flex-col space-y-4 animate-fade-in p-4 md:p-6">
   <!-- Loading State -->
   <div id="planning-loading" class="hidden flex flex-col items-center justify-center py-20 flex-1">
     <i class="fa-solid fa-circle-notch fa-spin text-4xl text-primary mb-4"></i>
@@ -72,36 +7,161 @@
 
   <!-- Main Matrix -->
   <div id="planning-matrix-container" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col min-h-[400px]">
+    <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3">
+      <div class="flex items-center gap-2.5 sm:gap-3">
+        <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">Detalhamento Mês a Mês</h3>
+
+        <!-- Botão de Informações ("i" no círculo) com Tooltip Didático no Hover -->
+        <div class="relative group">
+          <button type="button" id="btn-planning-info" aria-label="Instruções e atalhos da matriz"
+            class="w-6 h-6 rounded-full flex items-center justify-center bg-gray-200/80 hover:bg-purple-100 dark:bg-slate-700 dark:hover:bg-purple-950 text-gray-600 hover:text-purple-600 dark:text-gray-300 dark:hover:text-purple-300 text-xs font-bold transition-all cursor-pointer shadow-xs border border-gray-300/70 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-400">
+            <i class="fa-solid fa-info text-[11px]"></i>
+          </button>
+
+          <!-- Tooltip Didático (Aba Suspensa no Hover / Clique) -->
+          <div id="planning-info-tooltip" class="absolute left-0 top-full mt-2 hidden group-hover:block z-50 w-80 sm:w-96 p-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-2xl shadow-2xl ring-1 ring-black/10 dark:ring-white/10 animate-fade-in pointer-events-auto">
+            <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-gray-100 dark:border-slate-800 text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+              <div class="w-5 h-5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300 flex items-center justify-center text-[10px]">
+                <i class="fa-solid fa-info"></i>
+              </div>
+              <span>Como Interagir com a Matriz</span>
+            </div>
+
+            <div class="space-y-3 text-xs">
+              <!-- Previsão -->
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <i class="fa-solid fa-wand-magic-sparkles text-[10px]"></i>
+                </div>
+                <div>
+                  <span class="font-bold text-gray-900 dark:text-white">Previsão em Células (Meses Vigente e Futuros):</span>
+                  <ul class="text-gray-600 dark:text-gray-300 space-y-1 mt-0.5 list-disc list-inside">
+                    <li><strong class="text-purple-600 dark:text-purple-400">1º clique:</strong> Seleciona o mês e abre o box rápido para definir valor ou apagar.</li>
+                    <li><strong class="text-purple-600 dark:text-purple-400">2º clique na linha:</strong> Seleciona o intervalo de meses (em lote).</li>
+                    <li><strong class="text-purple-600 dark:text-purple-400">Ctrl + Clique:</strong> Seleciona a linha inteira da previsão (sem abrir o box normal). Permite selecionar múltiplas categorias para exclusão em lote.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- Exclusão em Grupo de Linhas de Previsão com Ctrl -->
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded-md bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <i class="fa-solid fa-layer-group text-[10px]"></i>
+                </div>
+                <div>
+                  <span class="font-bold text-gray-900 dark:text-white">Exclusão em Grupo com tecla "Ctrl":</span>
+                  <p class="text-gray-600 dark:text-gray-300 mt-0.5 leading-relaxed">
+                    Segure <kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-800 font-mono text-[10px] border border-gray-300 dark:border-slate-600 font-bold text-gray-800 dark:text-gray-200">Ctrl</kbd> (ou <kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-800 font-mono text-[10px] border border-gray-300 dark:border-slate-600 font-bold text-gray-800 dark:text-gray-200">Cmd</kbd>) e clique em qualquer célula de previsão para selecionar a parte projetada daquela linha. O box de exclusão em grupo abrirá imediatamente desde a primeira seleção. Vá clicando com Ctrl em outras linhas para selecioná-las e clique em <strong class="text-rose-600 dark:text-rose-400">Excluir Previsão</strong> para apagá-las em lote.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Fluxo de Caixa Acumulado -->
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <i class="fa-solid fa-money-bill-transfer text-[10px]"></i>
+                </div>
+                <div>
+                  <span class="font-bold text-gray-900 dark:text-white">Fluxo de Caixa Acumulado:</span>
+                  <ul class="text-gray-600 dark:text-gray-300 space-y-0.5 mt-0.5 list-disc list-inside">
+                    <li><strong class="text-emerald-600 dark:text-emerald-400">Edição do mês vigente:</strong> Clique no <span class="underline">mês vigente</span> ou meses passados para editar o saldo inicial manualmente.</li>
+                    <li><strong class="text-emerald-600 dark:text-emerald-400">Propagação automática:</strong> O valor inserido recalcula automaticamente os meses seguintes somando entradas e subtraindo saídas.</li>
+                    <li><strong class="text-emerald-600 dark:text-emerald-400">Restaurar:</strong> Clique com o botão direito para restaurar o cálculo automático.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- Realizado -->
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-primary dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <i class="fa-solid fa-receipt text-[10px]"></i>
+                </div>
+                <div>
+                  <span class="font-bold text-gray-900 dark:text-white">Realizado (Meses Passados / Registros):</span>
+                  <ul class="text-gray-600 dark:text-gray-300 space-y-0.5 mt-0.5 list-disc list-inside">
+                    <li><strong class="text-primary dark:text-blue-400">1 clique:</strong> Abre a gaveta lateral com o extrato de transações.</li>
+                    <li><strong class="text-primary dark:text-blue-400">2 cliques rápidos:</strong> Permite editar o valor realizado diretamente.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- Legenda -->
+              <div class="pt-2.5 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                <span class="flex items-center gap-1.5">
+                  <span class="italic font-semibold text-purple-600 dark:text-purple-400">Itálico Roxo:</span> Previsto
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <span class="font-extrabold text-gray-900 dark:text-white">Negrito:</span> Alteração manual
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 w-full sm:w-auto">
+        <div class="flex items-center gap-2 border border-gray-200 dark:border-gray-700 p-1 rounded-lg bg-gray-50 dark:bg-slate-800">
+          <button onclick="toggleAllMacros(false)" class="w-28 flex items-center justify-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm">
+            <span>Recolher</span>
+            <i class="fa-solid fa-chevron-up"></i>
+          </button>
+          <button onclick="toggleAllMacros(true)" class="w-28 flex items-center justify-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm">
+            <span>Expandir</span>
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
+        </div>
+        <button id="btn-update-planning-forecast" class="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center shadow-sm h-[34px] cursor-pointer" title="Calcular e atualizar previsões automáticas baseadas no histórico de transações">
+          <i class="fa-solid fa-wand-magic-sparkles mr-2 text-xs"></i> <span>Atualizar Previsão</span>
+        </button>
+        <button onclick="openAddCategoryModal()" class="bg-primary hover:bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm h-[34px]">
+          <i class="fa-solid fa-plus mr-2"></i> <span>Nova</span>
+        </button>
+        <button id="btn-refresh-planning" class="bg-white dark:bg-slate-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm focus:outline-none flex items-center justify-center h-[34px]" title="Atualizar dados">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Painel Superior de Ação em Lote para Categorias Selecionadas -->
+    <div id="planning-top-selection-bar" class="hidden px-6 py-3 bg-gradient-to-r from-purple-50 via-indigo-50/60 to-purple-50 dark:from-slate-800 dark:via-purple-950/40 dark:to-slate-800 border-b border-purple-200 dark:border-purple-800/70 flex flex-wrap items-center justify-between gap-3 animate-fade-in transition-all">
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-purple-600 text-white text-xs shadow-xs">
+          <i class="fa-solid fa-check-double"></i>
+        </span>
+        <div class="flex items-center gap-2">
+          <span id="top-selection-count" class="text-xs sm:text-sm font-bold text-purple-900 dark:text-purple-200">1 categoria selecionada</span>
+          <span class="text-gray-300 dark:text-gray-600 hidden sm:inline">•</span>
+          <span id="top-selection-categories-preview" class="text-xs text-gray-600 dark:text-gray-400 font-medium truncate max-w-xs md:max-w-md hidden sm:inline"></span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Botão Excluir Tudo Selecionado -->
+        <button id="btn-top-batch-delete" type="button" class="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-trash-can text-xs"></i>
+          <span>Excluir Previsão</span>
+        </button>
+        <!-- Botão Cancelar -->
+        <button id="btn-top-batch-cancel" type="button" class="bg-white hover:bg-gray-100 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-slate-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer">
+          <i class="fa-solid fa-xmark mr-1"></i>
+          <span>Cancelar</span>
+        </button>
+      </div>
+    </div>
     <div class="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
-      <table class="w-full text-sm text-left whitespace-nowrap">
-        <thead id="planning-thead" class="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-900/50 sticky top-0 z-20 shadow-sm">
+      <table class="w-full text-sm text-left whitespace-nowrap border-separate border-spacing-0">
+        <thead id="planning-thead" class="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-900 sticky top-0 z-20 shadow-sm">
           <!-- Populated by JS -->
         </thead>
         <tbody id="planning-tbody" class="divide-y divide-gray-200 dark:divide-gray-700">
           <!-- Populated by JS -->
         </tbody>
-        <tfoot id="planning-tfoot" class="sticky bottom-0 z-20 bg-gray-50 dark:bg-gray-900 font-bold border-t border-gray-300 dark:border-gray-600 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <tfoot id="planning-tfoot" class="bg-gray-50 dark:bg-gray-900 font-bold border-t-2 border-gray-300 dark:border-gray-600">
           <!-- Populated by JS -->
         </tfoot>
       </table>
     </div>
   </div>
 
-  <!-- Charts -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
-    <div class="lg:col-span-2 glass-card bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-5">
-      <h3 class="text-sm font-bold text-gray-800 dark:text-white mb-4">Evolução de Saldos Anual</h3>
-      <div class="h-72">
-        <canvas id="planningEvolutionChart"></canvas>
-      </div>
-    </div>
-    <div class="glass-card bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-5">
-      <h3 class="text-sm font-bold text-gray-800 dark:text-white mb-4">Composição de Despesas</h3>
-      <div class="h-72 relative flex items-center justify-center">
-        <canvas id="planningCompositionChart"></canvas>
-      </div>
-    </div>
-  </div>
+  
 </div>
 
 <!-- Modal Drawer: Drill-down -->
@@ -139,12 +199,215 @@
             <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">Este valor pode ser uma previsão manual ou vazia.</p>
           </div>
           
-          <div id="planning-drawer-loading" class="flex flex-col items-center justify-center text-center py-20">
+          <div id="planning-drawer-loading" class="hidden flex flex-col items-center justify-center text-center py-20">
             <i class="fa-solid fa-circle-notch fa-spin text-3xl text-primary mb-3"></i>
             <p class="text-sm text-gray-500 dark:text-gray-400">Buscando transações...</p>
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Category Modal -->
+<div id="modal-add-category" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-[100] flex items-center justify-center">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl animate-scale-in">
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50">
+      <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+        <i class="fa-solid fa-folder-plus text-primary"></i>
+        <span>Nova Categoria</span>
+      </h3>
+      <button type="button" onclick="$('#modal-add-category').addClass('hidden')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+        <i class="fa-solid fa-times text-xl"></i>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome da Categoria</label>
+        <input type="text" id="add-cat-name" class="w-full px-4 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent dark:text-white" placeholder="Ex: Assinaturas">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Macro / Perfil</label>
+        <select id="add-cat-macro" class="w-full px-4 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent dark:text-white">
+          <option value="Despesa Fixa">Despesa Fixa</option>
+          <option value="Despesa Variável">Despesa Variável Essencial</option>
+          <option value="Despesa Discricionária">Despesa Discricionária</option>
+          <option value="Receita Variável">Receita (Entrada)</option>
+        </select>
+      </div>
+    </div>
+    <div class="px-6 py-4 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+      <button type="button" onclick="$('#modal-add-category').addClass('hidden')" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl transition-colors font-medium">Cancelar</button>
+      <button type="button" onclick="submitAddCategory(this)" class="px-4 py-2 bg-primary hover:bg-blue-700 text-white rounded-xl transition-colors shadow-sm font-medium flex items-center space-x-2">
+        <i class="fa-solid fa-check"></i>
+        <span>Adicionar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Gerenciar Previsão da Categoria (Apagar ou Modificar) -->
+<div id="modal-planning-forecast-actions" class="fixed inset-0 z-50 hidden" aria-labelledby="forecast-modal-title" role="dialog" aria-modal="true">
+  <div class="fixed inset-0 bg-gray-900/60 backdrop-blur-xs transition-opacity" id="forecast-modal-backdrop"></div>
+  <div class="fixed inset-0 z-10 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div class="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 overflow-hidden transform transition-all">
+      <!-- Header -->
+      <div class="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-purple-50/70 dark:bg-purple-950/30">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 flex items-center justify-center text-lg font-bold">
+            <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-gray-900 dark:text-white" id="forecast-modal-title">Previsão: Categoria</h3>
+            <p class="text-xs text-gray-500 dark:text-slate-400" id="forecast-modal-subtitle">Setembro a Dezembro de 2026</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-forecast-modal" class="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-5 space-y-4">
+        <div class="bg-gray-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-gray-200/70 dark:border-slate-700/60 flex items-center justify-between">
+          <div>
+            <span class="text-xs text-gray-500 dark:text-slate-400 block font-medium">Valor previsto atual</span>
+            <span class="text-lg font-bold text-purple-600 dark:text-purple-400" id="forecast-modal-current-val">R$ 0,00</span>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 italic">
+            Previsão Estimada
+          </span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            Valor para Previsão (R$)
+          </label>
+          <div class="relative rounded-xl shadow-xs">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-xs font-semibold text-gray-400 dark:text-slate-500">R$</span>
+            <input type="text" id="forecast-modal-input-val" 
+              class="w-full pl-9 pr-3.5 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl text-sm font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all" 
+              placeholder="0,00">
+          </div>
+          <p class="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
+            Você pode modificar o valor para os meses futuros ou cancelar a previsão.
+          </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-2 space-y-2">
+          <button type="button" id="btn-forecast-apply-future" 
+            class="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-[0.99] text-white rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-arrows-split-up-and-left text-xs"></i>
+            <span>Modificar este e todos os próximos meses</span>
+          </button>
+
+          <button type="button" id="btn-forecast-delete-future" 
+            class="w-full py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-trash-can text-xs"></i>
+            <span>Apagar previsão deste e dos próximos meses</span>
+          </button>
+
+          <button type="button" id="btn-forecast-apply-single" 
+            class="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-calendar-day text-[11px]"></i>
+            <span>Modificar apenas este mês</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Footer with secondary link to see transactions -->
+      <div class="px-5 py-3.5 bg-gray-50 dark:bg-slate-800/40 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between">
+        <button type="button" id="btn-forecast-view-txs" class="text-xs text-primary dark:text-blue-400 hover:underline font-medium flex items-center gap-1.5">
+          <i class="fa-solid fa-list-ul text-[10px]"></i>
+          <span>Ver histórico de transações</span>
+        </button>
+        <button type="button" id="btn-forecast-cancel" class="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 font-medium">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra Horizontal de Previsão em Lote / Range de Meses -->
+  <div id="planning-range-forecast-box" style="display: none; z-index: 99999;" class="fixed bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-2 border-purple-500 dark:border-purple-500 rounded-2xl shadow-2xl px-4 py-2 flex items-center gap-3 transition-all ring-1 ring-black/10 dark:ring-white/10 select-none max-w-[95vw]">
+    
+    <!-- Info Categoria e Período -->
+    <div class="flex items-center gap-2.5 shrink-0 border-r border-gray-200 dark:border-slate-700 pr-3">
+      <div class="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300 flex items-center justify-center shrink-0 text-xs shadow-xs">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+      </div>
+      <div class="flex flex-col">
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] uppercase font-bold tracking-wider text-purple-600 dark:text-purple-400">Previsão:</span>
+          <span id="range-box-category-name" class="text-xs font-extrabold text-gray-900 dark:text-white max-w-[130px] sm:max-w-[180px] truncate" title=""></span>
+        </div>
+        <div class="flex items-center gap-1 text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+          <i class="fa-regular fa-calendar text-[10px]"></i>
+          <span id="range-box-months-text">Outubro / 2026</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Campo de Valor -->
+    <div class="flex items-center gap-1.5 shrink-0">
+      <span class="text-xs font-bold text-gray-500 dark:text-gray-400">Valor:</span>
+      <div class="relative w-32 sm:w-36">
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 font-bold text-xs">R$</span>
+        <input type="text" id="range-box-input-val" placeholder="0,00" autocomplete="off"
+          class="w-full pl-8 pr-2.5 py-1 bg-gray-50 dark:bg-slate-800 border-2 border-purple-200 dark:border-purple-700 rounded-xl text-sm font-bold text-gray-900 dark:text-white focus:outline-none focus:border-purple-600 focus:bg-white dark:focus:bg-slate-900 transition-all text-right">
+      </div>
+    </div>
+
+    <!-- Botões de Ação -->
+    <div class="flex items-center gap-2 shrink-0">
+      <!-- Botão Apagar -->
+      <button type="button" id="btn-range-box-delete" 
+        class="bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-600 dark:bg-rose-950/50 dark:hover:bg-rose-900/70 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs" 
+        title="Excluir previsão deste período">
+        <i class="fa-solid fa-trash-can text-[11px]"></i>
+        <span>Apagar</span>
+      </button>
+
+      <!-- Botão Salvar -->
+      <button type="button" id="btn-range-box-apply" 
+        class="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 transition-all flex items-center gap-1.5 cursor-pointer">
+        <i class="fa-solid fa-check text-[11px]"></i>
+        <span>Salvar</span>
+      </button>
+    </div>
+
+    <!-- Botão Fechar -->
+    <button type="button" id="btn-range-box-close" 
+      class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm p-1 ml-0.5 cursor-pointer transition-colors" 
+      title="Fechar e desmarcar (Esc)">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <!-- Barra Flutuante de Ação em Lote: Excluir Previsões de Categorias Selecionadas -->
+  <div id="planning-batch-forecast-bar" style="display: none;" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-white dark:bg-slate-800 border-2 border-purple-500 dark:border-purple-600 rounded-2xl shadow-2xl px-5 py-3.5 flex flex-wrap items-center gap-4 transition-all duration-300 max-w-2xl w-[92%] sm:w-auto">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-900/60 flex items-center justify-center text-purple-600 dark:text-purple-300 shrink-0">
+        <i class="fa-solid fa-layer-group text-sm"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span id="batch-forecast-count" class="text-sm font-bold text-gray-900 dark:text-white">1 linha de previsão selecionada</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">Exclusão em Lote</span>
+        </div>
+        <div id="batch-forecast-categories-list" class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs mt-0.5"></div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 ml-auto">
+      <button id="btn-batch-delete-forecasts" type="button" class="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
+        <i class="fa-solid fa-trash-can text-xs"></i>
+        <span>Excluir Previsão</span>
+      </button>
+      <button id="btn-clear-forecast-selection" type="button" class="bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer" title="Desmarcar todas">
+        <i class="fa-solid fa-xmark mr-1 sm:mr-1.5"></i>
+        <span>Cancelar</span>
+      </button>
     </div>
   </div>
 </div>
