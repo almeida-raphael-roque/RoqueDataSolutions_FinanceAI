@@ -495,13 +495,13 @@ function getPlanningData(year) {
     }
   });
 
-  // Ensure 'Salário' is mapped to Receitas
-  if (!catNameMap['salario']) {
-    catNameMap['salario'] = 'Salário';
-    catNameMap['salário'] = 'Salário';
-    catMacroMap['salario'] = 'Receitas';
-    catMacroMap['salário'] = 'Receitas';
-  }
+  // Ensure 'SALARIO' is mapped to Receitas
+  catNameMap['salario'] = 'SALARIO';
+  catNameMap['salário'] = 'SALARIO';
+  catNameMap['SALARIO'] = 'SALARIO';
+  catMacroMap['salario'] = 'Receitas';
+  catMacroMap['salário'] = 'Receitas';
+  catMacroMap['SALARIO'] = 'Receitas';
 
   let userRules = [];
   try { userRules = getUserRules(); } catch(e) {}
@@ -560,9 +560,9 @@ function getPlanningData(year) {
     }
   });
 
-  // Ensure Salário category exists in incomeCategories unless explicitly excluded for this year
-  if (!excludedCatsSet.has('salario') && !excludedCatsSet.has('salário') && !incomeCategories['Salário']) {
-    incomeCategories['Salário'] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+  // Ensure SALARIO category exists in incomeCategories unless explicitly excluded for this year
+  if (!excludedCatsSet.has('salario') && !excludedCatsSet.has('salário') && !incomeCategories['SALARIO']) {
+    incomeCategories['SALARIO'] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
   }
 
   for (let i = 1; i < data.length; i++) {
@@ -608,17 +608,15 @@ function getPlanningData(year) {
 
     // Heuristics for salary if description matches
     if (normDesc.includes('salario') || normDesc.includes('remuneracao') || normDesc.includes('provento') || normDesc.includes('folha de pag')) {
-      if (!categoria || categoria.toLowerCase() === 'outros' || categoria.toLowerCase() === 'revisar') {
-        categoria = 'Salário';
-      }
-      if (!tipo || tipo.toLowerCase() === 'saída') {
-        tipo = 'Entrada';
-      }
+      categoria = 'SALARIO';
+      tipo = 'Entrada';
     }
 
     // Canonical category name
     const catNorm = normStr(categoria);
-    if (categoria && catNameMap[catNorm]) {
+    if (categoria.toLowerCase() === 'salario' || categoria.toLowerCase() === 'salário') {
+      categoria = 'SALARIO';
+    } else if (categoria && catNameMap[catNorm]) {
       categoria = catNameMap[catNorm];
     } else if (categoria && catNameMap[categoria.toLowerCase()]) {
       categoria = catNameMap[categoria.toLowerCase()];
@@ -636,7 +634,7 @@ function getPlanningData(year) {
     const explicitMacro = catMacroMap[catNorm] || catMacroMap[categoria.toLowerCase()];
 
     let isIncome = false;
-    if (explicitMacro === 'Receitas') {
+    if (categoria === 'SALARIO' || explicitMacro === 'Receitas') {
       isIncome = true;
     } else if (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita') {
       isIncome = true;
