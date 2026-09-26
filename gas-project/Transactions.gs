@@ -768,33 +768,49 @@ function exportToCsv() {
   };
 }
 
-function applyUserRulesToTransactionsBackend() {
+function applyUserRulesToTransactionsBackend(rulesList) {
   backupForUndo();
   const txSheet = getTable('Transactions');
   const txData = txSheet.getDataRange().getValues();
-  if (txData.length <= 1) return { updatedCount: 0 };
+  if (txData.length <= 1) return { success: true, updatedCount: 0 };
   
-  let rules = [];
-  try {
-    rules = getUserRules();
-  } catch(e) {
-    rules = [];
+  let rules = rulesList;
+  if (!rules || !Array.isArray(rules) || rules.length === 0) {
+    try {
+      rules = getUserRules();
+    } catch(e) {
+      rules = [];
+    }
   }
-  if (!rules || rules.length === 0) return { updatedCount: 0 };
+  if (!rules || rules.length === 0) return { success: true, updatedCount: 0 };
   
   let cats = [];
   try { cats = getGlobalCategories(); } catch(e) {}
   const catNameMap = {};
   cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
 
+  // Normalization helper for resilient pattern matching (accents, punctuation, multiple spaces)
+  function normForMatch(s) {
+    if (!s) return '';
+    return String(s)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   let updatedCount = 0;
   for (let i = 1; i < txData.length; i++) {
     const rawDesc = String(txData[i][1] || '').trim().toUpperCase();
     const currentCat = String(txData[i][2] || '').trim();
+    const cleanDesc = normForMatch(rawDesc);
     
     for (let r = 0; r < rules.length; r++) {
       const pattern = String(rules[r].pattern || '').trim().toUpperCase();
-      if (pattern && rawDesc.includes(pattern)) {
+      const normPattern = normForMatch(pattern);
+      if (pattern && (rawDesc.includes(pattern) || (normPattern && cleanDesc.includes(normPattern)))) {
         let targetCat = rules[r].categoria;
         if (targetCat && catNameMap[targetCat.toLowerCase()]) {
           targetCat = catNameMap[targetCat.toLowerCase()];
@@ -813,7 +829,7 @@ function applyUserRulesToTransactionsBackend() {
     SpreadsheetApp.flush();
   }
 
-  return { updatedCount: updatedCount };
+  return { success: true, updatedCount: updatedCount };
 }
 
 function updateSingleTransactionCategory(rowIndex, newCategory, txDetails) {

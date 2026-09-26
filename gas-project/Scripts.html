@@ -472,12 +472,73 @@ function openAddCategoryModal(macroProfile) {
     console.warn("Could not read user rules from storage:", e);
   }
 
-  function saveRulesToStorage() {
+  function applyLocalRulesToTransactions() {
+    if (typeof GLOBAL_MOCK_TRANSACTIONS !== 'undefined' && Array.isArray(GLOBAL_MOCK_TRANSACTIONS)) {
+      GLOBAL_MOCK_TRANSACTIONS.forEach(t => {
+        const rawDesc = String(t.descricao || '').trim().toUpperCase();
+        const normDesc = typeof normalizeDescription === 'function' ? normalizeDescription(t.descricao).toUpperCase() : rawDesc;
+        const matchedRule = GLOBAL_RULES.find(rule => {
+          const p = (rule.pattern || '').trim().toUpperCase();
+          return p && (rawDesc.includes(p) || normDesc.includes(p));
+        });
+        if (matchedRule) {
+          let catName = null;
+          if (matchedRule.categoryId) {
+            const catObj = GLOBAL_CATEGORIES.find(c => c.id == matchedRule.categoryId);
+            if (catObj) catName = catObj.name;
+          }
+          if (!catName && matchedRule.categoria) {
+            catName = matchedRule.categoria;
+          }
+          if (catName) {
+            t.categoria = catName;
+          }
+        }
+      });
+      try {
+        if (typeof GLOBAL_MOCK_BACKUP !== 'undefined') {
+          GLOBAL_MOCK_BACKUP = JSON.stringify(GLOBAL_MOCK_TRANSACTIONS);
+        }
+        if (typeof saveMockTransactionsToStorage === 'function') {
+          saveMockTransactionsToStorage();
+        }
+      } catch(e) {}
+    }
+
+    if (typeof currentLoadedTransactions !== 'undefined' && Array.isArray(currentLoadedTransactions)) {
+      currentLoadedTransactions.forEach(t => {
+        const rawDesc = String(t.descricao || '').trim().toUpperCase();
+        const normDesc = typeof normalizeDescription === 'function' ? normalizeDescription(t.descricao).toUpperCase() : rawDesc;
+        const matchedRule = GLOBAL_RULES.find(rule => {
+          const p = (rule.pattern || '').trim().toUpperCase();
+          return p && (rawDesc.includes(p) || normDesc.includes(p));
+        });
+        if (matchedRule) {
+          let catName = null;
+          if (matchedRule.categoryId) {
+            const catObj = GLOBAL_CATEGORIES.find(c => c.id == matchedRule.categoryId);
+            if (catObj) catName = catObj.name;
+          }
+          if (!catName && matchedRule.categoria) {
+            catName = matchedRule.categoria;
+          }
+          if (catName) {
+            t.categoria = catName;
+          }
+        }
+      });
+    }
+  }
+
+  function saveRulesToStorage(callback) {
     try {
       localStorage.setItem('finance_user_rules', JSON.stringify(GLOBAL_RULES));
     } catch(e) {
       console.warn("Could not save user rules to storage:", e);
     }
+
+    applyLocalRulesToTransactions();
+
     if (typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.saveAllUserRules === 'function') {
       const rulesToSend = GLOBAL_RULES.map(r => {
         const cat = GLOBAL_CATEGORIES.find(c => c.id == r.categoryId);
@@ -487,7 +548,19 @@ function openAddCategoryModal(macroProfile) {
           clean: r.clean || r.pattern
         };
       });
-      google.script.run.saveAllUserRules(rulesToSend);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (typeof callback === 'function') callback(null, result);
+        })
+        .withFailureHandler(function(err) {
+          console.warn("Erro ao salvar regras no backend:", err);
+          if (typeof callback === 'function') callback(err);
+        })
+        .saveAllUserRules(rulesToSend);
+    } else {
+      setTimeout(function() {
+        if (typeof callback === 'function') callback(null, { success: true, updatedCount: 0 });
+      }, 250);
     }
   }
 
@@ -3586,6 +3659,10 @@ function openAddCategoryModal(macroProfile) {
 
       if(!pattern || !clean || !categoryId) return alert('Preencha todos os campos.');
 
+      const $btn = $('#btn-save-rule');
+      const originalText = $btn.html();
+      $btn.prop('disabled', true).addClass('opacity-75').html('<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> <span>Salvando na planilha...</span>');
+
       if(id) {
         const rule = GLOBAL_RULES.find(r => r.id == id);
         if(rule) { rule.pattern = pattern; rule.clean = clean; rule.categoryId = parseInt(categoryId); }
@@ -3597,9 +3674,31 @@ function openAddCategoryModal(macroProfile) {
           categoryId: parseInt(categoryId)
         });
       }
-      saveRulesToStorage();
-      $('#rule-modal').addClass('hidden');
-      renderRulesList();
+
+      saveRulesToStorage(function(err, result) {
+        $btn.prop('disabled', false).removeClass('opacity-75').html(originalText);
+        $('#rule-modal').addClass('hidden');
+        renderRulesList();
+
+        // 1. Invalida caches para propagar dados novos
+        if (typeof invalidateCache === 'function') invalidateCache();
+
+        // 2. Recarrega tabela de transações e filtros se presentes
+        if (typeof loadTransactions === 'function') loadTransactions();
+        if (typeof updateCategoryFilterDropdown === 'function') updateCategoryFilterDropdown();
+
+        // 3. Recarrega matriz de planejamento e dashboard
+        if (typeof loadPlanning === 'function') loadPlanning();
+        if (typeof loadDashboard === 'function') loadDashboard();
+
+        // 4. Feedback claro para o usuário
+        const count = (result && result.updatedCount) ? result.updatedCount : 0;
+        if (count > 0) {
+          showRefreshToast(`Regra salva! Planilha do Sheets atualizada (${count} ${count === 1 ? 'transação reclassificada' : 'transações reclassificadas'}).`);
+        } else {
+          showRefreshToast('Regra salva e planilha do Sheets atualizada com sucesso!');
+        }
+      });
     });
 
     $(document).on('click', '.btn-edit-rule', function() {
@@ -3611,7 +3710,7 @@ function openAddCategoryModal(macroProfile) {
         $('#rule-pattern').val(rule.pattern);
         $('#rule-clean').val(rule.clean);
         $('#rule-category').val(rule.categoryId);
-        $('#rule-modal-title').text('Editar Regra');
+        $('#rule-modal-title').html('<i class="fa-solid fa-pen-to-square text-primary text-base"></i> <span>Editar Regra</span>');
         $('#rule-modal').removeClass('hidden');
       }
     });
@@ -3620,8 +3719,15 @@ function openAddCategoryModal(macroProfile) {
       if(confirm('Tem certeza que deseja excluir esta regra?')) {
         const id = $(this).data('id');
         GLOBAL_RULES = GLOBAL_RULES.filter(r => r.id != id);
-        saveRulesToStorage();
         renderRulesList();
+        saveRulesToStorage(function(err, result) {
+          if (typeof invalidateCache === 'function') invalidateCache();
+          if (typeof loadTransactions === 'function') loadTransactions();
+          if (typeof updateCategoryFilterDropdown === 'function') updateCategoryFilterDropdown();
+          if (typeof loadPlanning === 'function') loadPlanning();
+          if (typeof loadDashboard === 'function') loadDashboard();
+          showRefreshToast('Regra excluída e planilha do Sheets atualizada com sucesso!');
+        });
       }
     });
 
@@ -4926,6 +5032,65 @@ $(document).ready(function() {
     }
   }
 
+  // --- FLUXO DE CAIXA: ARMAZENAMENTO E OVERRIDES MANUAIS ---
+  function getCashFlowOverrides() {
+    try {
+      const raw = localStorage.getItem('fin_ally_cash_flow_overrides');
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    try {
+      const pOverrides = getPlanningOverrides();
+      const res = {};
+      Object.keys(pOverrides).forEach(y => {
+        if (pOverrides[y] && pOverrides[y]['Fluxo de Caixa']) {
+          res[y] = {};
+          Object.keys(pOverrides[y]['Fluxo de Caixa']).forEach(m => {
+            res[y][m] = pOverrides[y]['Fluxo de Caixa'][m].val;
+          });
+        }
+      });
+      return res;
+    } catch(e) {}
+    return {};
+  }
+
+  function saveCashFlowOverride(year, month, val) {
+    const yStr = String(year);
+    const mStr = String(month);
+    
+    let cfOverrides = {};
+    try {
+      const raw = localStorage.getItem('fin_ally_cash_flow_overrides');
+      if (raw) cfOverrides = JSON.parse(raw);
+    } catch(e) {}
+    if (!cfOverrides[yStr]) cfOverrides[yStr] = {};
+    cfOverrides[yStr][mStr] = val;
+    try {
+      localStorage.setItem('fin_ally_cash_flow_overrides', JSON.stringify(cfOverrides));
+    } catch(e) {}
+
+    savePlanningOverride(year, 'Fluxo de Caixa', month, 'Fluxo de Caixa', val);
+  }
+
+  function removeCashFlowOverride(year, month) {
+    const yStr = String(year);
+    const mStr = String(month);
+    
+    let cfOverrides = {};
+    try {
+      const raw = localStorage.getItem('fin_ally_cash_flow_overrides');
+      if (raw) cfOverrides = JSON.parse(raw);
+    } catch(e) {}
+    if (cfOverrides[yStr] && cfOverrides[yStr][mStr] !== undefined) {
+      delete cfOverrides[yStr][mStr];
+      try {
+        localStorage.setItem('fin_ally_cash_flow_overrides', JSON.stringify(cfOverrides));
+      } catch(e) {}
+    }
+
+    removePlanningOverride(year, 'Fluxo de Caixa', month);
+  }
+
   // --- ARMAZENAMENTO E CÁLCULO DE PREVISÕES AUTOMÁTICAS ---
   function getPlanningForecasts() {
     try {
@@ -5842,7 +6007,7 @@ $(document).ready(function() {
     saidasHtml += `<td class="px-4 py-3 text-right font-bold text-rose-700 dark:text-rose-300 border-l border-gray-300 dark:border-gray-600">${formatCurrency(totalExpenseYear)}</td></tr>`;
 
     // 2. Linha Saldo do Mês (Receitas - Saídas)
-    let saldoHtml = `<tr class="bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white">
+    let saldoHtml = `<tr class="bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600">
       <td class="px-4 py-3 planning-sticky-col planning-sticky-body planning-tf-saldo font-bold border-r border-gray-300 dark:border-gray-600">Saldo do Mês</td>`;
     let totalBalanceYear = 0;
     data.monthlyTotals.forEach((m, idx) => {
@@ -5855,7 +6020,116 @@ $(document).ready(function() {
     let totalColorClass = totalBalanceYear < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white';
     saldoHtml += `<td class="px-4 py-3 text-right font-bold ${totalColorClass} border-l border-gray-300 dark:border-gray-600">${formatCurrency(totalBalanceYear)}</td></tr>`;
     
-    let tfootHtml = saidasHtml + saldoHtml;
+    // 3. Linha Fluxo de Caixa (última linha da matriz)
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1; // 1-12
+    const targetYear = data.year;
+
+    const cfOverrides = getCashFlowOverrides();
+    const yearOverrides = (cfOverrides && cfOverrides[String(targetYear)]) ? cfOverrides[String(targetYear)] : {};
+
+    // Saldo inicial do ano anterior se existir Dezembro
+    let prevCashFlow = 0;
+    const prevYearStr = String(targetYear - 1);
+    if (cfOverrides && cfOverrides[prevYearStr] && cfOverrides[prevYearStr]['12'] !== undefined) {
+      prevCashFlow = parseFloat(cfOverrides[prevYearStr]['12']) || 0;
+    }
+
+    let fluxoCaixaCellsHtml = '';
+    let finalYearCashFlow = 0;
+
+    for (let m = 1; m <= 12; m++) {
+      const idx = m - 1;
+      const mMeta = (data.monthlyTotals && data.monthlyTotals[idx]) ? data.monthlyTotals[idx] : { income: 0, expense: 0, balance: 0 };
+      const totalEntradas = mMeta.income || 0;
+      const totalSaidas = mMeta.expense || 0;
+
+      const isPast = (targetYear < currentYear) || (targetYear === currentYear && m < currentMonth);
+      const isCurrent = (targetYear === currentYear && m === currentMonth);
+      const isSubsequent = (targetYear > currentYear) || (targetYear === currentYear && m > currentMonth);
+
+      const mStr = String(m);
+      const hasManualOverride = isPast && (yearOverrides[mStr] !== undefined && yearOverrides[mStr] !== null);
+
+      let currentVal = 0;
+      let isManual = false;
+
+      if (hasManualOverride) {
+        currentVal = parseFloat(yearOverrides[mStr]) || 0;
+        isManual = true;
+      } else {
+        // Regra do Fluxo de Caixa:
+        // Pega o valor do fluxo de caixa do mês anterior + entradas desse mês - saídas desse mês
+        currentVal = prevCashFlow + totalEntradas - totalSaidas;
+        isManual = false;
+      }
+
+      prevCashFlow = currentVal;
+      if (m === 12) {
+        finalYearCashFlow = currentVal;
+      }
+
+      const isFc = isPlanningMonthForecast(targetYear, m);
+      let textClass = '';
+      if (currentVal < 0) {
+        textClass = 'text-rose-600 dark:text-rose-400 font-bold';
+      } else if (currentVal > 0) {
+        textClass = 'text-blue-900 dark:text-blue-100 font-bold';
+      } else {
+        textClass = 'text-gray-600 dark:text-gray-300 font-bold';
+      }
+
+      if (isManual) {
+        textClass += ' font-extrabold ring-1 ring-inset ring-blue-500/60 bg-blue-100/60 dark:bg-blue-900/40 rounded-sm';
+      } else if (isFc) {
+        textClass += ' italic';
+      }
+
+      const displayVal = currentVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const manualDot = isManual ? '<span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mr-1 shrink-0" title="Alterado manualmente"></span>' : '';
+
+      if (isPast) {
+        fluxoCaixaCellsHtml += `
+          <td class="planning-cashflow-cell px-3 py-3 text-center cursor-pointer select-none transition-colors hover:bg-blue-100/80 dark:hover:bg-blue-900/50 relative group/cf ${textClass}"
+              data-month="${m}"
+              data-year="${targetYear}"
+              data-raw-value="${currentVal}"
+              data-is-manual="${isManual ? '1' : '0'}"
+              data-is-past="1"
+              title="${isManual ? 'Valor alterado manualmente. Clique para editar ou botão direito para restaurar o cálculo automático.' : 'Mês passado. Clique para alterar o fluxo de caixa acumulado manualmente.'}">
+            <div class="flex items-center justify-center gap-0.5">
+              ${manualDot}
+              <span class="cf-val">${displayVal}</span>
+              <i class="fa-solid fa-pen text-[8px] text-primary opacity-0 group-hover/cf:opacity-80 transition-opacity ml-1"></i>
+            </div>
+          </td>`;
+      } else {
+        const subTitle = isCurrent
+          ? 'Mês vigente: Fluxo de Caixa Acumulado anterior + Entradas - Saídas'
+          : 'Mês subsequente: Fluxo de Caixa Acumulado anterior + Entradas - Saídas';
+        fluxoCaixaCellsHtml += `
+          <td class="px-3 py-3 text-center select-none ${textClass}"
+              data-month="${m}"
+              data-year="${targetYear}"
+              data-raw-value="${currentVal}"
+              title="${subTitle}">
+            <span class="cf-val">${displayVal}</span>
+          </td>`;
+      }
+    }
+
+    const finalColorClass = finalYearCashFlow < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-blue-900 dark:text-blue-100';
+    const fluxoCaixaTotalHtml = `<td class="px-4 py-3 text-right font-bold ${finalColorClass} border-l border-gray-300 dark:border-gray-600" title="Saldo final projetado de Caixa no final do ano">${formatCurrency(finalYearCashFlow)}</td>`;
+
+    const fluxoCaixaHtml = `
+      <tr class="bg-blue-50/70 dark:bg-slate-900/90 text-blue-950 dark:text-blue-100 border-t-2 border-primary/40">
+        <td class="px-4 py-3 planning-sticky-col planning-sticky-body planning-tf-fluxo-caixa font-bold border-r border-gray-300 dark:border-gray-600">Fluxo de Caixa Acumulado</td>
+        ${fluxoCaixaCellsHtml}
+        ${fluxoCaixaTotalHtml}
+      </tr>`;
+
+    let tfootHtml = saidasHtml + saldoHtml + fluxoCaixaHtml;
     $('#planning-tfoot').html(tfootHtml);
     if (typeof updateForecastSelectionUI === 'function') {
       updateForecastSelectionUI();
@@ -6000,6 +6274,155 @@ $(document).ready(function() {
       $td.html(prevHtml);
     }
   }
+
+  // --- EDIÇÃO INLINE DO FLUXO DE CAIXA PARA MESES PASSADOS ---
+  function startCashFlowInlineCellEdit($td) {
+    if ($td.find('input').length > 0) return;
+
+    // Fecha outras edições abertas
+    $('.planning-cashflow-inline-input').each(function() {
+      commitCashFlowInlineCellEdit($(this));
+    });
+    $('.planning-inline-input').each(function() {
+      commitInlineCellEdit($(this));
+    });
+
+    const rawVal = parseFloat($td.attr('data-raw-value')) || 0;
+    const month = parseInt($td.attr('data-month'), 10);
+    const cellYear = parseInt($td.attr('data-year'), 10);
+    const year = (!isNaN(cellYear) && cellYear > 2000) ? cellYear : (currentPlanningYear || getActivePlanningYear());
+    const isManual = $td.attr('data-is-manual') === '1';
+
+    const displayVal = rawVal === 0 ? '' : rawVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    $td.data('previous-html', $td.html());
+    $td.data('initial-raw-val', rawVal);
+    $td.data('initial-is-manual', isManual);
+
+    const input = $(`
+      <input type="text"
+             class="planning-cashflow-inline-input w-full px-1 py-1 text-center text-xs font-bold bg-white dark:bg-slate-800 text-blue-900 dark:text-blue-200 border-2 border-primary rounded shadow-md focus:outline-none focus:ring-2 focus:ring-primary/60"
+             value="${displayVal}"
+             placeholder="0,00"
+      />
+    `);
+
+    $td.empty().append(input);
+    input.focus().select();
+
+    let committed = false;
+
+    input.on('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!committed) {
+          committed = true;
+          commitCashFlowInlineCellEdit(input);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        committed = true;
+        cancelCashFlowInlineCellEdit(input);
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        if (!committed) {
+          committed = true;
+          commitCashFlowInlineCellEdit(input);
+        }
+        const cells = $td.closest('tr').find('.planning-cashflow-cell');
+        const idx = cells.index($td);
+        const targetIdx = e.shiftKey ? idx - 1 : idx + 1;
+        if (targetIdx >= 0 && targetIdx < cells.length) {
+          setTimeout(() => startCashFlowInlineCellEdit($(cells[targetIdx])), 50);
+        }
+      }
+    });
+
+    input.on('blur', function() {
+      if (!committed) {
+        committed = true;
+        commitCashFlowInlineCellEdit(input);
+      }
+    });
+  }
+
+  function commitCashFlowInlineCellEdit($input) {
+    const $td = $input.closest('td');
+    if ($td.length === 0 || !$input.parent().length) return;
+
+    const rawText = $input.val().trim();
+    const month = parseInt($td.attr('data-month'), 10);
+    const cellYear = parseInt($td.attr('data-year'), 10);
+    const year = (!isNaN(cellYear) && cellYear > 2000) ? cellYear : (currentPlanningYear || getActivePlanningYear());
+
+    const initialRawVal = parseFloat($td.data('initial-raw-val')) || 0;
+    const parsedVal = parseUserInputCurrency(rawText);
+
+    const hasChanged = Math.abs(parsedVal - initialRawVal) > 0.005;
+    if (!hasChanged) {
+      cancelCashFlowInlineCellEdit($input);
+      return;
+    }
+
+    saveCashFlowOverride(year, month, parsedVal);
+
+    const targetData = planningDataCacheByYear[year] || (planningDataCache && planningDataCache.year === year ? planningDataCache : null);
+    if (targetData) {
+      const container = document.getElementById('planning-matrix-container');
+      const scrollLeft = container ? container.scrollLeft : 0;
+      const scrollTop = container ? container.scrollTop : 0;
+
+      renderPlanning(targetData);
+
+      if (container) {
+        container.scrollLeft = scrollLeft;
+        container.scrollTop = scrollTop;
+      }
+    } else {
+      loadPlanning(year);
+    }
+
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const mName = monthNames[month - 1] || `Mês ${month}`;
+    showRefreshToast(`Fluxo de Caixa Acumulado de ${mName}/${year} alterado para ${formatCurrency(parsedVal)}.`);
+  }
+
+  function cancelCashFlowInlineCellEdit($input) {
+    const $td = $input.closest('td');
+    if ($td.length === 0) return;
+    const prevHtml = $td.data('previous-html');
+    if (prevHtml !== undefined) {
+      $td.html(prevHtml);
+    }
+  }
+
+  $(document).on('click', '.planning-cashflow-cell', function(e) {
+    if ($(e.target).is('input')) return;
+    startCashFlowInlineCellEdit($(this));
+  });
+
+  $(document).on('contextmenu', '.planning-cashflow-cell', function(e) {
+    const isManual = $(this).attr('data-is-manual') === '1';
+    const month = parseInt($(this).attr('data-month'), 10);
+    const cellYear = parseInt($(this).attr('data-year'), 10);
+    const year = (!isNaN(cellYear) && cellYear > 2000) ? cellYear : (currentPlanningYear || getActivePlanningYear());
+
+    if (isManual) {
+      e.preventDefault();
+      const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+      const mName = monthNames[month - 1] || `Mês ${month}`;
+      if (confirm(`Restaurar o cálculo automático do Fluxo de Caixa Acumulado para ${mName} de ${year}?`)) {
+        removeCashFlowOverride(year, month);
+        const targetData = planningDataCacheByYear[year] || (planningDataCache && planningDataCache.year === year ? planningDataCache : null);
+        if (targetData) {
+          renderPlanning(targetData);
+        } else {
+          loadPlanning(year);
+        }
+        showRefreshToast(`Cálculo automático do Fluxo de Caixa Acumulado restaurado para ${mName}.`);
+      }
+    }
+  });
 
   // --- GERENCIAMENTO DE SELEÇÃO DE CATEGORIAS DE PREVISÃO EM LOTE ---
   const selectedForecastCategories = new Map(); // catName -> { cat, month, year, tipo }

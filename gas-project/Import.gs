@@ -62,7 +62,7 @@ function saveImportedTransactions(transactions) {
 }
 
 function saveAllUserRules(rules) {
-  if (!rules) return true;
+  if (!rules) return { success: true, updatedCount: 0, totalRules: 0 };
   const sheet = ensureUserRulesSheet();
   sheet.clear();
   sheet.appendRow(["Padrão (Normalizado)", "Categoria", "Estabelecimento"]);
@@ -78,7 +78,19 @@ function saveAllUserRules(rules) {
     sheet.getRange(2, 1, rows.length, 3).setValues(rows);
   }
   SpreadsheetApp.flush();
-  return true;
+
+  // Aplica imediatamente as novas regras nas transações da planilha
+  let txUpdatedCount = 0;
+  try {
+    if (typeof applyUserRulesToTransactionsBackend === 'function') {
+      const res = applyUserRulesToTransactionsBackend(rules);
+      if (res && res.updatedCount) txUpdatedCount = res.updatedCount;
+    }
+  } catch(e) {
+    Logger.log("Aviso ao aplicar regras às transações na planilha: " + e);
+  }
+
+  return { success: true, updatedCount: txUpdatedCount, totalRules: (rules || []).length };
 }
 
 

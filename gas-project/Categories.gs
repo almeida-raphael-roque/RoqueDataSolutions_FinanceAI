@@ -1,3 +1,7 @@
+function getRulesSheet() {
+  return getTable('UserRules');
+}
+
 function getCategoriesSheet() {
   return getTable('Categorias');
 }

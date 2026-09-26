@@ -104,34 +104,44 @@
   </div>
 
   <!-- Rule Modal -->
-  <div id="rule-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
-      <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-        <h3 class="text-xl font-bold text-gray-800" id="rule-modal-title">Nova Regra</h3>
-        <button type="button" class="btn-close-rule-modal text-gray-400 hover:text-gray-600 transition-colors">
+  <div id="rule-modal" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col border border-gray-100 dark:border-slate-700 animate-scale-in">
+      <div class="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/50">
+        <h3 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2" id="rule-modal-title">
+          <i class="fa-solid fa-wand-magic-sparkles text-primary text-base"></i>
+          <span>Nova Regra</span>
+        </h3>
+        <button type="button" class="btn-close-rule-modal text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
           <i class="fa-solid fa-xmark text-xl"></i>
         </button>
       </div>
       <div class="p-6 space-y-4">
         <input type="hidden" id="rule-modal-id">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Se a descrição contiver...</label>
-          <input type="text" id="rule-pattern" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-primary focus:border-primary" placeholder="Ex: JOAORAIMUNDO ou IFD">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Se a descrição contiver...</label>
+          <input type="text" id="rule-pattern" class="w-full border border-gray-300 dark:border-slate-600 rounded-lg p-2.5 focus:ring-primary focus:border-primary bg-white dark:bg-slate-700 text-gray-900 dark:text-white" placeholder="Ex: JOAORAIMUNDO ou IFD">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Limpar descrição para...</label>
-          <input type="text" id="rule-clean" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-primary focus:border-primary" placeholder="Ex: Frango Assado ou iFood">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Limpar descrição para...</label>
+          <input type="text" id="rule-clean" class="w-full border border-gray-300 dark:border-slate-600 rounded-lg p-2.5 focus:ring-primary focus:border-primary bg-white dark:bg-slate-700 text-gray-900 dark:text-white" placeholder="Ex: Frango Assado ou iFood">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Atribuir à categoria</label>
-          <select id="rule-category" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-primary focus:border-primary">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Atribuir à categoria</label>
+          <select id="rule-category" class="w-full border border-gray-300 dark:border-slate-600 rounded-lg p-2.5 focus:ring-primary focus:border-primary bg-white dark:bg-slate-700 text-gray-900 dark:text-white">
              <!-- Populated via JS -->
           </select>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-up text-primary text-[11px]"></i>
+            <span>Ao salvar, as regras e transações na planilha do Sheets são atualizadas automaticamente.</span>
+          </p>
         </div>
       </div>
-      <div class="p-6 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50">
-        <button type="button" class="btn-close-rule-modal px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium transition-colors">Cancelar</button>
-        <button type="button" id="btn-save-rule" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors">Salvar</button>
+      <div class="p-6 border-t border-gray-100 dark:border-slate-700 flex justify-end space-x-3 bg-gray-50 dark:bg-slate-800/50">
+        <button type="button" class="btn-close-rule-modal px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors text-sm">Cancelar</button>
+        <button type="button" id="btn-save-rule" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors text-sm flex items-center gap-2">
+          <i class="fa-solid fa-check"></i>
+          <span>Salvar</span>
+        </button>
       </div>
     </div>
   </div>
