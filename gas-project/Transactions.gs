@@ -93,6 +93,16 @@ function parseFlexDate(dateVal, fallbackYear) {
     ? parseInt(fallbackYear, 10)
     : new Date().getFullYear();
 
+  // Excel / Google Sheets numeric date serial (e.g. 45000 - 60000)
+  if (typeof dateVal === 'number' && dateVal > 25000 && dateVal < 80000) {
+    const dNum = new Date(Math.round((dateVal - 25569) * 86400000));
+    if (!isNaN(dNum.getTime())) {
+      let y = dNum.getFullYear();
+      if ((y === 2001 || y === 1926) && targetYr !== y) dNum.setFullYear(targetYr);
+      return dNum;
+    }
+  }
+
   if (dateVal instanceof Date) {
     if (isNaN(dateVal.getTime())) return new Date(NaN);
     let y = dateVal.getFullYear();
@@ -108,6 +118,19 @@ function parseFlexDate(dateVal, fallbackYear) {
   
   let cleanStr = String(dateVal).trim();
   if (!cleanStr) return new Date(NaN);
+
+  // Numeric serial stored as string
+  if (/^\d{5}$/.test(cleanStr)) {
+    const num = parseInt(cleanStr, 10);
+    if (num > 25000 && num < 80000) {
+      const dNum = new Date(Math.round((num - 25569) * 86400000));
+      if (!isNaN(dNum.getTime())) {
+        let y = dNum.getFullYear();
+        if ((y === 2001 || y === 1926) && targetYr !== y) dNum.setFullYear(targetYr);
+        return dNum;
+      }
+    }
+  }
 
   // Normalize dots to slashes if formatted as DD.MM.YYYY or DD.MM
   if (/^\d{1,2}\.\d{1,2}(\.\d{2,4})?$/.test(cleanStr)) {
@@ -507,12 +530,25 @@ function getPlanningData(year) {
     'Discricionárias': {}
   };
   
-  // Pre-seed categories from global configuration so customized categories appear
+  // Get excluded categories specifically for targetYear
+  const excludedCatsList = getPlanningExcludedCategoriesBackend(targetYear);
+  const excludedCatsSet = new Set();
+  if (Array.isArray(excludedCatsList)) {
+    excludedCatsList.forEach(c => {
+      excludedCatsSet.add(String(c).trim().toLowerCase());
+      excludedCatsSet.add(normStr(c));
+    });
+  }
+
+  // Pre-seed categories from global configuration so customized categories appear (excluding ones excluded for this year)
   cats.forEach(c => {
     if (!c.name) return;
     const cName = String(c.name).trim();
     const cLower = cName.toLowerCase();
-    const macro = catMacroMap[cLower] || catMacroMap[normStr(cName)];
+    const cNorm = normStr(cName);
+    if (excludedCatsSet.has(cLower) || excludedCatsSet.has(cNorm)) return;
+
+    const macro = catMacroMap[cLower] || catMacroMap[cNorm];
     if (macro === 'Receitas') {
       if (!incomeCategories[cName]) {
         incomeCategories[cName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
@@ -524,8 +560,8 @@ function getPlanningData(year) {
     }
   });
 
-  // Ensure Salário category exists in incomeCategories
-  if (!incomeCategories['Salário']) {
+  // Ensure Salário category exists in incomeCategories unless explicitly excluded for this year
+  if (!excludedCatsSet.has('salario') && !excludedCatsSet.has('salário') && !incomeCategories['Salário']) {
     incomeCategories['Salário'] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
   }
 
@@ -534,19 +570,22 @@ function getPlanningData(year) {
     const dispVal = (displayData && displayData[i]) ? displayData[i][5] : '';
     const rawVal = row[5];
     
-    // Parse date checking both rawVal and dispVal
-    let d = parseFlexDate(rawVal, targetYear);
-    if (isNaN(d.getTime()) || (d.getFullYear() !== targetYear && dispVal)) {
+    // Priority: use visual display string first to avoid any UTC timezone boundary shifting
+    let d = null;
+    if (dispVal) {
       const dDisp = parseFlexDate(dispVal, targetYear);
       if (!isNaN(dDisp.getTime())) {
         d = dDisp;
       }
     }
-    if (isNaN(d.getTime())) continue;
+    if (!d || isNaN(d.getTime())) {
+      d = parseFlexDate(rawVal, targetYear);
+    }
+    if (!d || isNaN(d.getTime())) continue;
     if (d.getFullYear() !== targetYear) continue;
 
     const mIdx = d.getMonth();
-    const valor = parseValor(row[4]);
+    const valor = Math.abs(parseValor(row[4]));
     if (valor === 0) continue;
 
     let categoria = String(row[2] || '').trim();
@@ -585,6 +624,13 @@ function getPlanningData(year) {
       categoria = catNameMap[categoria.toLowerCase()];
     } else if (!categoria) {
       categoria = (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita') ? 'Outras Receitas' : 'Outros';
+    }
+
+    // Check if category is excluded specifically for targetYear
+    const catClean = categoria.trim().toLowerCase();
+    const catNormClean = normStr(categoria);
+    if (excludedCatsSet.has(catClean) || excludedCatsSet.has(catNormClean)) {
+      continue;
     }
 
     const explicitMacro = catMacroMap[catNorm] || catMacroMap[categoria.toLowerCase()];
@@ -633,6 +679,10 @@ function getPlanningData(year) {
       let ovBackendChanged = false;
       Object.keys(yearOv).forEach(cat => {
         const catClean = cat.trim().toLowerCase();
+        const catNormClean = normStr(cat);
+        if (excludedCatsSet.has(catClean) || excludedCatsSet.has(catNormClean)) {
+          return;
+        }
         for (let m = 1; m <= 12; m++) {
           if (yearOv[cat] && yearOv[cat][m] !== undefined) {
             const ov = yearOv[cat][m];
@@ -674,6 +724,22 @@ function getPlanningData(year) {
   } catch (e) {
     console.error('Error applying server overrides', e);
   }
+
+  // Ensure NO excluded category remains in the result for targetYear
+  Object.keys(incomeCategories).forEach(cat => {
+    if (excludedCatsSet.has(cat.trim().toLowerCase()) || excludedCatsSet.has(normStr(cat))) {
+      delete incomeCategories[cat];
+    }
+  });
+  ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+    if (expenseMacros[macro]) {
+      Object.keys(expenseMacros[macro]).forEach(cat => {
+        if (excludedCatsSet.has(cat.trim().toLowerCase()) || excludedCatsSet.has(normStr(cat))) {
+          delete expenseMacros[macro][cat];
+        }
+      });
+    }
+  });
 
   const monthlyTotals = Array.from({length: 12}, () => ({ income: 0, expense: 0, balance: 0 }));
   let summary = {
@@ -795,6 +861,80 @@ function removePlanningOverrideBackend(year, cat, month) {
       delete overrides[yStr][cat][month];
       userProp.setProperty('PLANNING_MANUAL_OVERRIDES', JSON.stringify(overrides));
     }
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function getPlanningExcludedCategoriesBackend(year) {
+  try {
+    const userProp = PropertiesService.getUserProperties();
+    const raw = userProp.getProperty('PLANNING_EXCLUDED_CATEGORIES');
+    if (!raw) return [];
+    const obj = JSON.parse(raw);
+    const yStr = String(year);
+    return Array.isArray(obj[yStr]) ? obj[yStr] : [];
+  } catch(e) {
+    return [];
+  }
+}
+
+function savePlanningExcludedCategoryBackend(year, cat) {
+  try {
+    if (!cat) return { success: false };
+    const userProp = PropertiesService.getUserProperties();
+    let obj = {};
+    const raw = userProp.getProperty('PLANNING_EXCLUDED_CATEGORIES');
+    if (raw) {
+      try { obj = JSON.parse(raw); } catch(e) {}
+    }
+    const yStr = String(year);
+    if (!Array.isArray(obj[yStr])) obj[yStr] = [];
+    const catClean = String(cat).trim();
+    if (!obj[yStr].some(c => c.toLowerCase() === catClean.toLowerCase())) {
+      obj[yStr].push(catClean);
+    }
+    userProp.setProperty('PLANNING_EXCLUDED_CATEGORIES', JSON.stringify(obj));
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function removePlanningExcludedCategoryBackend(year, cat) {
+  try {
+    if (!cat) return { success: false };
+    const userProp = PropertiesService.getUserProperties();
+    let obj = {};
+    const raw = userProp.getProperty('PLANNING_EXCLUDED_CATEGORIES');
+    if (raw) {
+      try { obj = JSON.parse(raw); } catch(e) {}
+    }
+    const yStr = String(year);
+    if (Array.isArray(obj[yStr])) {
+      const catClean = String(cat).trim().toLowerCase();
+      obj[yStr] = obj[yStr].filter(c => String(c).trim().toLowerCase() !== catClean);
+      userProp.setProperty('PLANNING_EXCLUDED_CATEGORIES', JSON.stringify(obj));
+    }
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function savePlanningExcludedCategoriesBackend(year, catsArray) {
+  try {
+    const userProp = PropertiesService.getUserProperties();
+    let obj = {};
+    const raw = userProp.getProperty('PLANNING_EXCLUDED_CATEGORIES');
+    if (raw) {
+      try { obj = JSON.parse(raw); } catch(e) {}
+    }
+    const yStr = String(year);
+    const arr = Array.isArray(catsArray) ? catsArray : (typeof catsArray === 'string' ? JSON.parse(catsArray) : []);
+    obj[yStr] = arr;
+    userProp.setProperty('PLANNING_EXCLUDED_CATEGORIES', JSON.stringify(obj));
     return { success: true };
   } catch(e) {
     return { success: false, error: e.toString() };

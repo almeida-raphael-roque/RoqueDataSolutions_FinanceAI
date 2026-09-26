@@ -94,7 +94,90 @@ $(document).ready(function() {
 });
 </script>
 <script>
+  window.deletePlanningCategory = function(nameOrElem, optYear) {
+    let name = '';
+    let year = optYear || (typeof currentPlanningYear !== 'undefined' ? currentPlanningYear : (typeof getActivePlanningYear === 'function' ? getActivePlanningYear() : new Date().getFullYear()));
+    if (typeof nameOrElem === 'string') {
+      name = decodeURIComponent(nameOrElem).trim();
+    } else if (nameOrElem && nameOrElem.getAttribute) {
+      name = decodeURIComponent(nameOrElem.getAttribute('data-cat') || '').trim();
+      const yAttr = nameOrElem.getAttribute('data-year');
+      if (yAttr) year = parseInt(yAttr, 10);
+    } else if (nameOrElem && typeof $ !== 'undefined' && $(nameOrElem).length) {
+      name = decodeURIComponent($(nameOrElem).attr('data-cat') || '').trim();
+      const yAttr = $(nameOrElem).attr('data-year');
+      if (yAttr) year = parseInt(yAttr, 10);
+    }
+    if (!name) return;
+    const catName = name;
+    
+    if (!confirm("Tem certeza que deseja excluir a linha '" + catName + "' da matriz de planejamento de " + year + "?\n\n(A linha será removida exclusivamente para o ano " + year + ")")) return;
+    
+    // 1. Salva a exclusão para o ano selecionado
+    savePlanningExcludedCategory(year, catName);
+
+    function normCat(s) {
+      return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    }
+    const targetNorm = normCat(catName);
+    const targetLower = catName.toLowerCase();
+
+    // 2. Remove imediatamente do cache em memória para este ano
+    const cleanCache = (d) => {
+      if (!d) return;
+      if (d.incomeCategories) {
+        Object.keys(d.incomeCategories).forEach(k => {
+          if (k.trim().toLowerCase() === targetLower || normCat(k) === targetNorm) {
+            delete d.incomeCategories[k];
+          }
+        });
+      }
+      if (d.expenseMacros) {
+        ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+          if (d.expenseMacros[macro]) {
+            Object.keys(d.expenseMacros[macro]).forEach(k => {
+              if (k.trim().toLowerCase() === targetLower || normCat(k) === targetNorm) {
+                delete d.expenseMacros[macro][k];
+              }
+            });
+          }
+        });
+      }
+    };
+
+    if (typeof planningDataCacheByYear !== 'undefined' && planningDataCacheByYear && planningDataCacheByYear[year]) {
+      cleanCache(planningDataCacheByYear[year]);
+    }
+    if (typeof planningDataCache !== 'undefined' && planningDataCache && planningDataCache.year === year) {
+      cleanCache(planningDataCache);
+    }
+
+    // 3. Remove a linha imediatamente da visualização no DOM
+    $('.btn-delete-planning-cat').filter(function() {
+      const c = decodeURIComponent($(this).attr('data-cat') || '');
+      return c.trim().toLowerCase() === targetLower || normCat(c) === targetNorm;
+    }).closest('tr').remove();
+
+    if (typeof showRefreshToast === 'function') {
+      showRefreshToast(`Linha "${catName}" excluída do planejamento de ${year}.`);
+    }
+
+    // 4. Re-aplica overrides e renderiza
+    if (typeof planningDataCacheByYear !== 'undefined' && planningDataCacheByYear && planningDataCacheByYear[year]) {
+      applyPlanningOverrides(planningDataCacheByYear[year]);
+      renderPlanning(planningDataCacheByYear[year]);
+    } else {
+      loadPlanning(year);
+    }
+  };
+
   window.deleteCategory = function(nameOrElem) {
+    if (nameOrElem && (
+      (nameOrElem.classList && nameOrElem.classList.contains('btn-delete-planning-cat')) ||
+      (typeof $ !== 'undefined' && $(nameOrElem).closest('#planning-matrix-container, .planning-table, .planning-child-cat').length)
+    )) {
+      return window.deletePlanningCategory(nameOrElem);
+    }
     let name = '';
     if (typeof nameOrElem === 'string') {
       name = decodeURIComponent(nameOrElem).trim();
@@ -333,6 +416,10 @@ function openAddCategoryModal(macroProfile) {
       alert("Por favor, preencha o nome da categoria.");
       return;
     }
+
+    if (typeof removePlanningExcludedCategory === 'function' && typeof currentPlanningYear !== 'undefined') {
+      removePlanningExcludedCategory(currentPlanningYear, name);
+    }
     
     const origText = $(btn).html();
     $(btn).html('<i class="fa-solid fa-circle-notch fa-spin"></i>').prop('disabled', true);
@@ -429,7 +516,7 @@ function openAddCategoryModal(macroProfile) {
       if (Array.isArray(parsedMock) && parsedMock.length > 0) {
         GLOBAL_MOCK_TRANSACTIONS = parsedMock;
         // Ensure 2026-09-04 salary is present
-        if (!GLOBAL_MOCK_TRANSACTIONS.some(t => (t.data === '2026-09-04' || t.data === '04/09/2026' || t.data === '04/09') && String(t.categoria || t.descricao).toLowerCase().includes('salário'))) {
+        if (!GLOBAL_MOCK_TRANSACTIONS.some(t => (t.data === '2026-09-04' || t.data === '04/09/2026' || t.data === '04/09') && String(t.categoria || t.descricao).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes('salario'))) {
           GLOBAL_MOCK_TRANSACTIONS.unshift({ id: "mock_tx_salario_sep_04", data: "2026-09-04", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário", origem: "Conta Itaú" });
         }
       }
@@ -5193,6 +5280,75 @@ $(document).ready(function() {
     }
   }
 
+  function getPlanningExcludedCategories(year) {
+    try {
+      const raw = localStorage.getItem('fin_ally_planning_excluded_categories');
+      const obj = raw ? JSON.parse(raw) : {};
+      const yStr = String(year);
+      return Array.isArray(obj[yStr]) ? obj[yStr] : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function savePlanningExcludedCategory(year, catName) {
+    if (!catName) return;
+    const cat = String(catName).trim();
+    const yStr = String(year);
+    try {
+      const raw = localStorage.getItem('fin_ally_planning_excluded_categories');
+      const obj = raw ? JSON.parse(raw) : {};
+      if (!Array.isArray(obj[yStr])) obj[yStr] = [];
+      if (!obj[yStr].some(c => c.trim().toLowerCase() === cat.toLowerCase())) {
+        obj[yStr].push(cat);
+      }
+      localStorage.setItem('fin_ally_planning_excluded_categories', JSON.stringify(obj));
+    } catch (e) {}
+
+    const forecasts = getPlanningForecasts();
+    if (!forecasts[yStr]) forecasts[yStr] = {};
+    forecasts[yStr][cat] = {
+      forecastValue: 0,
+      isEligible: false,
+      isExcluded: true,
+      months: {},
+      updatedAt: Date.now()
+    };
+    try { localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts)); } catch(e) {}
+
+    if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.savePlanningExcludedCategoryBackend) {
+      google.script.run
+        .withFailureHandler(function(err) { console.warn('Could not sync excluded cat to backend:', err); })
+        .savePlanningExcludedCategoryBackend(year, cat);
+    }
+  }
+
+  function removePlanningExcludedCategory(year, catName) {
+    if (!catName) return;
+    const cat = String(catName).trim().toLowerCase();
+    const yStr = String(year);
+    try {
+      const raw = localStorage.getItem('fin_ally_planning_excluded_categories');
+      const obj = raw ? JSON.parse(raw) : {};
+      if (Array.isArray(obj[yStr])) {
+        obj[yStr] = obj[yStr].filter(c => String(c).trim().toLowerCase() !== cat);
+        localStorage.setItem('fin_ally_planning_excluded_categories', JSON.stringify(obj));
+      }
+    } catch (e) {}
+
+    const forecasts = getPlanningForecasts();
+    if (forecasts[yStr] && forecasts[yStr][catName]) {
+      forecasts[yStr][catName].isExcluded = false;
+      try { localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts)); } catch(e) {}
+    }
+
+    if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.removePlanningExcludedCategoryBackend) {
+      google.script.run
+        .withFailureHandler(function(err) { console.warn('Could not remove excluded cat from backend:', err); })
+        .removePlanningExcludedCategoryBackend(year, catName);
+    }
+  }
+
   function calculatePlanningForecastsData(targetYear, planningData) {
     targetYear = parseInt(targetYear, 10) || currentPlanningYear;
 
@@ -5613,11 +5769,25 @@ $(document).ready(function() {
     if (!data.expenseMacros) data.expenseMacros = { 'Fixas': {}, 'Variáveis Essenciais': {}, 'Discricionárias': {} };
 
     // Remove qualquer categoria que não exista mais em GLOBAL_CATEGORIES (evita re-exibição de categorias excluídas)
-    // MAS NUNCA remove categorias que possuam transações realizadas na planilha!
-    if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES) && GLOBAL_CATEGORIES.length > 0) {
-      function normCatName(s) {
-        return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    // MAS NUNCA remove categorias que possuam transações realizadas na planilha, A NÃO SER que o usuário tenha excluído a linha para este ano!
+    function normCatName(s) {
+      return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    }
+
+    const excludedList = typeof getPlanningExcludedCategories === 'function' ? getPlanningExcludedCategories(data.year) : [];
+    const excludedSet = new Set();
+    excludedList.forEach(c => {
+      excludedSet.add(c.trim().toLowerCase());
+      excludedSet.add(normCatName(c));
+    });
+    Object.keys(yearFc).forEach(c => {
+      if (yearFc[c] && yearFc[c].isExcluded) {
+        excludedSet.add(c.trim().toLowerCase());
+        excludedSet.add(normCatName(c));
       }
+    });
+
+    if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES) && GLOBAL_CATEGORIES.length > 0) {
       const validNames = new Set();
       GLOBAL_CATEGORIES.forEach(c => {
         if (c.name) {
@@ -5627,23 +5797,30 @@ $(document).ready(function() {
       });
       validNames.add('outros');
       validNames.add('outras receitas');
-      validNames.add('salario');
-      validNames.add('salário');
+      if (!excludedSet.has('salario') && !excludedSet.has('salário')) {
+        validNames.add('salario');
+        validNames.add('salário');
+      }
 
       if (data.incomeCategories) {
         Object.keys(data.incomeCategories).forEach(cat => {
+          const catNorm = normCatName(cat);
+          const catLower = cat.trim().toLowerCase();
+          if (excludedSet.has(catLower) || excludedSet.has(catNorm)) {
+            delete data.incomeCategories[cat];
+            return;
+          }
           const cells = data.incomeCategories[cat];
           const hasRealized = Array.isArray(cells) && cells.some(c => c && ((c.realized && c.realized > 0) || (c.total && c.total > 0 && !c.isForecast)));
           if (hasRealized) {
-            const catNorm = normCatName(cat);
             if (!validNames.has(catNorm)) {
               GLOBAL_CATEGORIES.push({ id: Date.now() + Math.random(), name: cat, profile: 'Receita Fixa' });
               validNames.add(catNorm);
-              validNames.add(cat.trim().toLowerCase());
+              validNames.add(catLower);
             }
             return;
           }
-          if (!validNames.has(cat.trim().toLowerCase()) && !validNames.has(normCatName(cat))) {
+          if (!validNames.has(catLower) && !validNames.has(catNorm)) {
             delete data.incomeCategories[cat];
           }
         });
@@ -5652,18 +5829,23 @@ $(document).ready(function() {
         ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
           if (data.expenseMacros[macro]) {
             Object.keys(data.expenseMacros[macro]).forEach(cat => {
+              const catNorm = normCatName(cat);
+              const catLower = cat.trim().toLowerCase();
+              if (excludedSet.has(catLower) || excludedSet.has(catNorm)) {
+                delete data.expenseMacros[macro][cat];
+                return;
+              }
               const cells = data.expenseMacros[macro][cat];
               const hasRealized = Array.isArray(cells) && cells.some(c => c && ((c.realized && c.realized > 0) || (c.total && c.total > 0 && !c.isForecast)));
               if (hasRealized) {
-                const catNorm = normCatName(cat);
                 if (!validNames.has(catNorm)) {
                   GLOBAL_CATEGORIES.push({ id: Date.now() + Math.random(), name: cat, profile: macro === 'Fixas' ? 'Despesa Fixa' : 'Despesa Variável' });
                   validNames.add(catNorm);
-                  validNames.add(cat.trim().toLowerCase());
+                  validNames.add(catLower);
                 }
                 return;
               }
-              if (!validNames.has(cat.trim().toLowerCase()) && !validNames.has(normCatName(cat))) {
+              if (!validNames.has(catLower) && !validNames.has(catNorm)) {
                 delete data.expenseMacros[macro][cat];
               }
             });
@@ -5676,6 +5858,9 @@ $(document).ready(function() {
     Object.keys(yearFc).forEach(cat => {
       const catFc = yearFc[cat];
       if (!catFc || !catFc.months || catFc.isExcluded) return;
+      const catLower = cat.trim().toLowerCase();
+      const catNorm = normCatName(cat);
+      if (excludedSet.has(catLower) || excludedSet.has(catNorm)) return;
 
       const catObj = (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES))
         ? GLOBAL_CATEGORIES.find(c => c.name.toLowerCase() === cat.toLowerCase())
@@ -5849,16 +6034,14 @@ $(document).ready(function() {
       });
     }
 
-    // Remove da matriz categorias que foram excluídas das previsões e não possuem nenhum realizado no ano
+    // Remove da matriz categorias que foram excluídas especificamente para este ano de planejamento
     if (data.incomeCategories) {
       Object.keys(data.incomeCategories).forEach(cat => {
+        const catClean = cat.trim().toLowerCase();
+        const catNorm = normCatName(cat);
         const catFc = yearFc[cat];
-        if (catFc && catFc.isExcluded) {
-          const cells = data.incomeCategories[cat];
-          const hasRealized = Array.isArray(cells) && cells.some(c => c && c.realized && c.realized > 0);
-          if (!hasRealized) {
-            delete data.incomeCategories[cat];
-          }
+        if (excludedSet.has(catClean) || excludedSet.has(catNorm) || (catFc && catFc.isExcluded)) {
+          delete data.incomeCategories[cat];
         }
       });
     }
@@ -5866,13 +6049,11 @@ $(document).ready(function() {
       ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
         if (data.expenseMacros[macro]) {
           Object.keys(data.expenseMacros[macro]).forEach(cat => {
+            const catClean = cat.trim().toLowerCase();
+            const catNorm = normCatName(cat);
             const catFc = yearFc[cat];
-            if (catFc && catFc.isExcluded) {
-              const cells = data.expenseMacros[macro][cat];
-              const hasRealized = Array.isArray(cells) && cells.some(c => c && c.realized && c.realized > 0);
-              if (!hasRealized) {
-                delete data.expenseMacros[macro][cat];
-              }
+            if (excludedSet.has(catClean) || excludedSet.has(catNorm) || (catFc && catFc.isExcluded)) {
+              delete data.expenseMacros[macro][cat];
             }
           });
         }
@@ -6091,7 +6272,7 @@ $(document).ready(function() {
               <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
                 <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
               </button>
-              <button type="button" onclick="window.deleteCategory(this); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+              <button type="button" onclick="window.deletePlanningCategory(this); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" data-year="${data.year}" title="Excluir Linha de ${cat} para ${data.year}">
                 <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
               </button>
             </div>
@@ -6144,7 +6325,7 @@ $(document).ready(function() {
                 <button type="button" onclick="window.editCategoryFromPlanning(this); event.stopPropagation();" class="btn-edit-planning-cat bg-blue-50 hover:bg-blue-100 text-primary dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Editar / Mover Categoria">
                   <i class="fa-solid fa-pen text-[10px] pointer-events-none"></i>
                 </button>
-                <button type="button" onclick="window.deleteCategory(this); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" title="Excluir Categoria">
+                <button type="button" onclick="window.deletePlanningCategory(this); event.stopPropagation();" class="btn-delete-planning-cat bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-900/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded w-5 h-5 flex items-center justify-center transition-all shadow-sm cursor-pointer" data-cat="${encodeURIComponent(cat)}" data-year="${data.year}" title="Excluir Linha de ${cat} para ${data.year}">
                   <i class="fa-solid fa-minus text-[10px] pointer-events-none"></i>
                 </button>
               </div>
@@ -6718,6 +6899,10 @@ $(document).ready(function() {
       const cat = item.cat;
       const tipo = item.tipo;
       const startMonth = currentMonthNum;
+
+      if (typeof savePlanningExcludedCategory === 'function') {
+        savePlanningExcludedCategory(year, cat);
+      }
 
       if (!overrides[yStr][cat]) overrides[yStr][cat] = {};
       
@@ -7482,6 +7667,27 @@ $(document).ready(function() {
       };
     });
 
+    function normCat(s) {
+      return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    }
+    const excludedList = typeof getPlanningExcludedCategories === 'function' ? getPlanningExcludedCategories(year) : [];
+    const excludedSet = new Set();
+    excludedList.forEach(c => {
+      excludedSet.add(c.trim().toLowerCase());
+      excludedSet.add(normCat(c));
+    });
+    try {
+      const fc = getPlanningForecasts();
+      if (fc && fc[String(year)]) {
+        Object.keys(fc[String(year)]).forEach(c => {
+          if (fc[String(year)][c] && fc[String(year)][c].isExcluded) {
+            excludedSet.add(c.trim().toLowerCase());
+            excludedSet.add(normCat(c));
+          }
+        });
+      }
+    } catch(e) {}
+
     const incomeCategories = {};
     const expenseMacros = {
       'Fixas': {},
@@ -7489,9 +7695,11 @@ $(document).ready(function() {
       'Discricionárias': {}
     };
 
-    // Pre-seed all categories from GLOBAL_CATEGORIES
+    // Pre-seed all categories from GLOBAL_CATEGORIES (unless excluded for this year)
     const cats = (typeof GLOBAL_CATEGORIES !== 'undefined') ? GLOBAL_CATEGORIES : [];
     cats.forEach(c => {
+      if (!c.name) return;
+      if (excludedSet.has(c.name.trim().toLowerCase()) || excludedSet.has(normCat(c.name))) return;
       const p = (c.profile || '').toLowerCase();
       if (p.includes('transferência') || p.includes('transferencia')) return;
 
@@ -7536,6 +7744,9 @@ $(document).ready(function() {
       if (!cat) cat = (tipo === 'Entrada') ? 'Outras Receitas' : 'Outros';
       if (cat.toLowerCase() === 'salario') cat = 'Salário';
 
+      // Skip if category is excluded for this year
+      if (excludedSet.has(cat.toLowerCase()) || excludedSet.has(normCat(cat))) return;
+
       if (tipo === 'Entrada' || cat === 'Salário' || desc.includes('salario')) {
         if (!incomeCategories[cat]) {
           incomeCategories[cat] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
@@ -7559,6 +7770,22 @@ $(document).ready(function() {
           expenseMacros['Discricionárias'][cat][mIdx].realized += val;
           expenseMacros['Discricionárias'][cat][mIdx].total += val;
         }
+      }
+    });
+
+    // Final clean of any excluded categories
+    Object.keys(incomeCategories).forEach(cat => {
+      if (excludedSet.has(cat.toLowerCase()) || excludedSet.has(normCat(cat))) {
+        delete incomeCategories[cat];
+      }
+    });
+    ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
+      if (expenseMacros[macro]) {
+        Object.keys(expenseMacros[macro]).forEach(cat => {
+          if (excludedSet.has(cat.toLowerCase()) || excludedSet.has(normCat(cat))) {
+            delete expenseMacros[macro][cat];
+          }
+        });
       }
     });
 
