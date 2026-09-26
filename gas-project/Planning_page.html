@@ -100,6 +100,11 @@
       </div>
       <div class="flex items-center gap-3 w-full sm:w-auto">
         <div class="flex items-center gap-2 border border-gray-200 dark:border-gray-700 p-1 rounded-lg bg-gray-50 dark:bg-slate-800">
+          <button id="btn-open-restore-planning" onclick="openRestorePlanningModal()" type="button" class="w-28 flex items-center justify-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 px-3 py-1.5 rounded-md text-xs font-semibold transition-all shadow-sm cursor-pointer" title="Restaurar linhas excluídas do planejamento">
+            <i class="fa-solid fa-clock-rotate-left text-xs"></i>
+            <span>Restaurar</span>
+            <span id="badge-restore-planning-count" class="hidden ml-0.5 px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold rounded-full">0</span>
+          </button>
           <button onclick="toggleAllMacros(false)" class="w-28 flex items-center justify-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm">
             <span>Recolher</span>
             <i class="fa-solid fa-chevron-up"></i>
@@ -242,6 +247,61 @@
         <i class="fa-solid fa-check"></i>
         <span>Adicionar</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Restaurar Linhas Excluídas do Planejamento -->
+<div id="modal-restore-planning-categories" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-[100] flex items-center justify-center p-4">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-scale-in flex flex-col max-h-[85vh] border border-gray-200 dark:border-gray-700">
+    <!-- Modal Header -->
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50/80 dark:bg-slate-800/80">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs">
+          <i class="fa-solid fa-clock-rotate-left text-sm"></i>
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <span>Restaurar Linhas do Planejamento</span>
+            <span id="restore-modal-year-badge" class="text-xs px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-semibold">2026</span>
+          </h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400">Selecione as linhas excluídas que você deseja reaver na matriz</p>
+        </div>
+      </div>
+      <button type="button" onclick="closeRestorePlanningModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+    </div>
+
+    <!-- Modal Toolbar (Selecionar Todas e Contador) -->
+    <div id="restore-planning-toolbar" class="px-6 py-2.5 border-b border-gray-100 dark:border-slate-700/60 bg-gray-50/40 dark:bg-slate-800/40 flex items-center justify-between gap-3 text-xs">
+      <label class="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+        <input type="checkbox" id="restore-select-all-checkbox" onchange="toggleSelectAllRestore(this)" class="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 cursor-pointer">
+        <span>Selecionar todas</span>
+      </label>
+      <span id="restore-selected-count-label" class="text-gray-500 dark:text-gray-400 font-medium">0 selecionadas</span>
+    </div>
+
+    <!-- Modal Body (Lista de Linhas Excluídas) -->
+    <div id="restore-planning-list" class="p-6 overflow-y-auto custom-scrollbar space-y-2.5 flex-1 min-h-[160px] max-h-[50vh]">
+      <!-- Preenchido dinamicamente via JS -->
+    </div>
+
+    <!-- Modal Footer -->
+    <div class="px-6 py-4 bg-gray-50/80 dark:bg-slate-800/80 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+      <button type="button" onclick="closeRestorePlanningModal()" class="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-200/60 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer">
+        Fechar
+      </button>
+      <div class="flex items-center gap-2">
+        <button type="button" id="btn-restore-all-categories" onclick="restoreAllExcludedCategories()" class="px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-rotate-left text-xs"></i>
+          <span>Restaurar Todas</span>
+        </button>
+        <button type="button" id="btn-restore-selected-categories" onclick="restoreSelectedCategories()" disabled class="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-check text-xs"></i>
+          <span id="btn-restore-selected-text">Restaurar Selecionadas</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>

@@ -5283,11 +5283,28 @@ $(document).ready(function() {
   function getPlanningExcludedCategories(year) {
     try {
       const raw = localStorage.getItem('fin_ally_planning_excluded_categories');
-      const obj = raw ? JSON.parse(raw) : {};
+      let obj = raw ? JSON.parse(raw) : null;
       const yStr = String(year);
+      if (!obj) {
+        obj = {};
+      }
+      if (!Array.isArray(obj[yStr])) {
+        // Inicializa com "Salário" conforme solicitado pelo usuário
+        const isRestored = localStorage.getItem('fin_ally_salario_restored_' + yStr) === 'true';
+        obj[yStr] = isRestored ? [] : ['Salário'];
+        localStorage.setItem('fin_ally_planning_excluded_categories', JSON.stringify(obj));
+      } else {
+        const isRestored = localStorage.getItem('fin_ally_salario_restored_' + yStr) === 'true';
+        const hasSalario = obj[yStr].some(c => c.trim().toLowerCase() === 'salario' || c.trim().toLowerCase() === 'salário');
+        if (!hasSalario && !isRestored && (yStr === '2026' || !localStorage.getItem('fin_ally_salario_init_checked_' + yStr))) {
+          obj[yStr].push('Salário');
+          localStorage.setItem('fin_ally_salario_init_checked_' + yStr, 'true');
+          localStorage.setItem('fin_ally_planning_excluded_categories', JSON.stringify(obj));
+        }
+      }
       return Array.isArray(obj[yStr]) ? obj[yStr] : [];
     } catch (e) {
-      return [];
+      return ['Salário'];
     }
   }
 
@@ -5305,6 +5322,10 @@ $(document).ready(function() {
       localStorage.setItem('fin_ally_planning_excluded_categories', JSON.stringify(obj));
     } catch (e) {}
 
+    if (cat.toLowerCase() === 'salario' || cat.toLowerCase() === 'salário') {
+      try { localStorage.removeItem('fin_ally_salario_restored_' + yStr); } catch(e) {}
+    }
+
     const forecasts = getPlanningForecasts();
     if (!forecasts[yStr]) forecasts[yStr] = {};
     forecasts[yStr][cat] = {
@@ -5315,6 +5336,10 @@ $(document).ready(function() {
       updatedAt: Date.now()
     };
     try { localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts)); } catch(e) {}
+
+    if (typeof updateRestorePlanningBadge === 'function') {
+      updateRestorePlanningBadge(year);
+    }
 
     if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.savePlanningExcludedCategoryBackend) {
       google.script.run
@@ -5336,10 +5361,46 @@ $(document).ready(function() {
       }
     } catch (e) {}
 
+    if (cat === 'salario' || cat === 'salário') {
+      try { localStorage.setItem('fin_ally_salario_restored_' + yStr, 'true'); } catch(e) {}
+    }
+
     const forecasts = getPlanningForecasts();
-    if (forecasts[yStr] && forecasts[yStr][catName]) {
-      forecasts[yStr][catName].isExcluded = false;
+    if (forecasts[yStr]) {
+      Object.keys(forecasts[yStr]).forEach(k => {
+        if (k.trim().toLowerCase() === cat) {
+          forecasts[yStr][k].isExcluded = false;
+        }
+      });
       try { localStorage.setItem('fin_ally_planning_forecasts', JSON.stringify(forecasts)); } catch(e) {}
+    }
+
+    // Limpa overrides de previsão excluída para esta categoria
+    try {
+      const rawOv = localStorage.getItem('fin_ally_planning_overrides');
+      if (rawOv) {
+        const overrides = JSON.parse(rawOv);
+        if (overrides[yStr]) {
+          Object.keys(overrides[yStr]).forEach(c => {
+            if (c.trim().toLowerCase() === cat) {
+              const catOv = overrides[yStr][c];
+              Object.keys(catOv).forEach(m => {
+                if (catOv[m] && (catOv[m].isDeletedForecast || (catOv[m].val === 0 && catOv[m].isForecast))) {
+                  delete catOv[m];
+                }
+              });
+              if (Object.keys(catOv).length === 0) {
+                delete overrides[yStr][c];
+              }
+            }
+          });
+          localStorage.setItem('fin_ally_planning_overrides', JSON.stringify(overrides));
+        }
+      }
+    } catch(e) {}
+
+    if (typeof updateRestorePlanningBadge === 'function') {
+      updateRestorePlanningBadge(year);
     }
 
     if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.removePlanningExcludedCategoryBackend) {
@@ -5348,6 +5409,193 @@ $(document).ready(function() {
         .removePlanningExcludedCategoryBackend(year, catName);
     }
   }
+
+  // --- GERENCIADOR DO MODAL DE RESTAURAÇÃO DE LINHAS EXCLUÍDAS ---
+  window.updateRestorePlanningBadge = function(optYear) {
+    const yr = optYear || (typeof currentPlanningYear !== 'undefined' && currentPlanningYear > 2000 ? currentPlanningYear : new Date().getFullYear());
+    const excluded = typeof getPlanningExcludedCategories === 'function' ? getPlanningExcludedCategories(yr) : [];
+    const count = excluded.length;
+    const badge = $('#badge-restore-planning-count');
+    if (badge.length) {
+      if (count > 0) {
+        badge.text(count).removeClass('hidden');
+      } else {
+        badge.addClass('hidden');
+      }
+    }
+  };
+
+  window.openRestorePlanningModal = function() {
+    const yr = (typeof currentPlanningYear !== 'undefined' && currentPlanningYear > 2000) ? currentPlanningYear : (typeof getActivePlanningYear === 'function' ? getActivePlanningYear() : new Date().getFullYear());
+    $('#restore-modal-year-badge').text(yr);
+    renderRestorePlanningList(yr);
+    $('#modal-restore-planning-categories').removeClass('hidden');
+  };
+
+  window.closeRestorePlanningModal = function() {
+    $('#modal-restore-planning-categories').addClass('hidden');
+  };
+
+  window.renderRestorePlanningList = function(optYear) {
+    const yr = optYear || (typeof currentPlanningYear !== 'undefined' && currentPlanningYear > 2000 ? currentPlanningYear : new Date().getFullYear());
+    const listContainer = $('#restore-planning-list');
+    const excluded = typeof getPlanningExcludedCategories === 'function' ? getPlanningExcludedCategories(yr) : [];
+
+    updateRestorePlanningBadge(yr);
+
+    if (!excluded || excluded.length === 0) {
+      $('#restore-planning-toolbar').addClass('hidden');
+      $('#btn-restore-all-categories').addClass('hidden');
+      $('#btn-restore-selected-categories').prop('disabled', true).addClass('opacity-50 pointer-events-none');
+      listContainer.html(`
+        <div class="py-10 text-center flex flex-col items-center justify-center">
+          <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xl mb-3 shadow-xs">
+            <i class="fa-solid fa-check"></i>
+          </div>
+          <p class="font-bold text-sm text-gray-800 dark:text-gray-200">Nenhuma linha excluída em ${yr}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs">Todas as categorias estão visíveis na matriz. Ao excluir qualquer linha com o botão (-), ela ficará disponível para restauração aqui.</p>
+        </div>
+      `);
+      return;
+    }
+
+    $('#restore-planning-toolbar').removeClass('hidden');
+    $('#btn-restore-all-categories').removeClass('hidden');
+    $('#restore-select-all-checkbox').prop('checked', false);
+    $('#restore-selected-count-label').text('0 selecionadas');
+    $('#btn-restore-selected-categories').prop('disabled', true).addClass('opacity-50 pointer-events-none');
+    $('#btn-restore-selected-text').text('Restaurar Selecionadas');
+
+    const getCatInfo = (catName) => {
+      const cLower = String(catName).toLowerCase().trim();
+      if (cLower === 'salário' || cLower === 'salario' || cLower.includes('rendimento') || cLower.includes('receita')) {
+        return { label: 'Receita', badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' };
+      }
+      if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES)) {
+        const found = GLOBAL_CATEGORIES.find(c => c && c.name && c.name.toLowerCase().trim() === cLower);
+        if (found) {
+          const p = (found.profile || '').toLowerCase();
+          if (p.includes('receita')) {
+            return { label: 'Receita', badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' };
+          }
+          if (p.includes('fixa')) {
+            return { label: 'Despesa Fixa', badgeClass: 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300' };
+          }
+          if (p.includes('variável') || p.includes('variavel') || p.includes('essencial')) {
+            return { label: 'Variável Essencial', badgeClass: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300' };
+          }
+          return { label: 'Discricionária', badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' };
+        }
+      }
+      return { label: 'Linha de Planejamento', badgeClass: 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300' };
+    };
+
+    let itemsHtml = '';
+    excluded.forEach((cat) => {
+      const info = getCatInfo(cat);
+      const isSalario = cat.toLowerCase().trim() === 'salário' || cat.toLowerCase().trim() === 'salario';
+      itemsHtml += `
+        <div class="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-slate-700/50 hover:bg-emerald-50/50 dark:hover:bg-slate-700 rounded-xl border border-gray-200 dark:border-slate-600 transition-all group">
+          <label class="flex items-center gap-3 cursor-pointer flex-1 select-none min-w-0 pr-3">
+            <input type="checkbox" class="restore-cat-item-checkbox w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 cursor-pointer" data-cat="${encodeURIComponent(cat)}" data-year="${yr}">
+            <div class="flex flex-col min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-gray-900 dark:text-white truncate">${cat}</span>
+                ${isSalario ? '<span class="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">Destaque</span>' : ''}
+              </div>
+              <span class="text-[11px] font-semibold mt-0.5 inline-block w-fit px-2 py-0.5 rounded-full ${info.badgeClass}">
+                ${info.label}
+              </span>
+            </div>
+          </label>
+          <button type="button" onclick="window.restoreSinglePlanningCategory('${encodeURIComponent(cat)}', ${yr}); event.stopPropagation();" class="shrink-0 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-rotate-left text-[11px]"></i>
+            <span>Restaurar</span>
+          </button>
+        </div>
+      `;
+    });
+
+    listContainer.html(itemsHtml);
+
+    $('.restore-cat-item-checkbox').off('change').on('change', function() {
+      const total = $('.restore-cat-item-checkbox').length;
+      const checked = $('.restore-cat-item-checkbox:checked').length;
+      $('#restore-select-all-checkbox').prop('checked', total > 0 && checked === total);
+      $('#restore-selected-count-label').text(`${checked} de ${total} selecionadas`);
+
+      const btn = $('#btn-restore-selected-categories');
+      if (checked > 0) {
+        btn.prop('disabled', false).removeClass('opacity-50 pointer-events-none');
+        $('#btn-restore-selected-text').text(`Restaurar Selecionadas (${checked})`);
+      } else {
+        btn.prop('disabled', true).addClass('opacity-50 pointer-events-none');
+        $('#btn-restore-selected-text').text('Restaurar Selecionadas');
+      }
+    });
+  };
+
+  window.toggleSelectAllRestore = function(masterElem) {
+    const isChecked = $(masterElem).is(':checked');
+    $('.restore-cat-item-checkbox').prop('checked', isChecked);
+    const total = $('.restore-cat-item-checkbox').length;
+    const checked = isChecked ? total : 0;
+    $('#restore-selected-count-label').text(`${checked} de ${total} selecionadas`);
+
+    const btn = $('#btn-restore-selected-categories');
+    if (checked > 0) {
+      btn.prop('disabled', false).removeClass('opacity-50 pointer-events-none');
+      $('#btn-restore-selected-text').text(`Restaurar Selecionadas (${checked})`);
+    } else {
+      btn.prop('disabled', true).addClass('opacity-50 pointer-events-none');
+      $('#btn-restore-selected-text').text('Restaurar Selecionadas');
+    }
+  };
+
+  window.restoreSinglePlanningCategory = function(catEncoded, optYear) {
+    const cat = decodeURIComponent(catEncoded);
+    const yr = optYear || currentPlanningYear || 2026;
+    executeRestoreCategories([cat], yr);
+  };
+
+  window.restoreSelectedCategories = function() {
+    const yr = currentPlanningYear || 2026;
+    const selected = [];
+    $('.restore-cat-item-checkbox:checked').each(function() {
+      const c = decodeURIComponent($(this).attr('data-cat') || '');
+      if (c) selected.push(c);
+    });
+    if (selected.length === 0) return;
+    executeRestoreCategories(selected, yr);
+  };
+
+  window.restoreAllExcludedCategories = function() {
+    const yr = currentPlanningYear || 2026;
+    const excluded = typeof getPlanningExcludedCategories === 'function' ? getPlanningExcludedCategories(yr) : [];
+    if (!excluded || excluded.length === 0) return;
+    executeRestoreCategories(excluded.slice(), yr);
+  };
+
+  window.executeRestoreCategories = function(categoriesToRestore, year) {
+    const yr = year || currentPlanningYear || 2026;
+    if (!categoriesToRestore || categoriesToRestore.length === 0) return;
+
+    categoriesToRestore.forEach(cat => {
+      removePlanningExcludedCategory(yr, cat);
+    });
+
+    closeRestorePlanningModal();
+
+    if (typeof showRefreshToast === 'function') {
+      const msg = categoriesToRestore.length === 1
+        ? `Linha "${categoriesToRestore[0]}" restaurada com sucesso no planejamento de ${yr}!`
+        : `${categoriesToRestore.length} linhas restauradas com sucesso no planejamento de ${yr}!`;
+      showRefreshToast(msg);
+    }
+
+    loadPlanning(yr);
+    updateRestorePlanningBadge(yr);
+  };
 
   function calculatePlanningForecastsData(targetYear, planningData) {
     targetYear = parseInt(targetYear, 10) || currentPlanningYear;
@@ -6194,6 +6442,9 @@ $(document).ready(function() {
 
   function renderPlanning(data) {
     applyPlanningOverrides(data);
+    if (typeof updateRestorePlanningBadge === 'function') {
+      updateRestorePlanningBadge(data.year);
+    }
 
     const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
     if (data.year === new Date().getFullYear()) {
