@@ -1,20 +1,64 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script>
 
-// Helper to parse "YYYY-MM-DD" safely without timezone shifts
-  function parseLocalDateString(dateStr) {
-    if (!dateStr) return new Date();
-    const s = String(dateStr);
+// Helper to parse dates safely without timezone shifts or 2-digit/omitted year bugs
+  function parseLocalDateString(dateStr, fallbackYear) {
+    if (!dateStr && dateStr !== 0) return new Date();
+    const targetYr = (fallbackYear !== undefined && fallbackYear !== 'all' && parseInt(fallbackYear, 10))
+      ? parseInt(fallbackYear, 10)
+      : (typeof currentPlanningYear !== 'undefined' ? currentPlanningYear : new Date().getFullYear());
+    
+    if (dateStr instanceof Date) {
+      if (isNaN(dateStr.getTime())) return new Date();
+      let y = dateStr.getFullYear();
+      if (y < 100) dateStr.setFullYear(y + 2000);
+      if ((y === 2001 || y === 1926) && targetYr !== y) dateStr.setFullYear(targetYr);
+      return dateStr;
+    }
+
+    let s = String(dateStr).trim();
+    if (!s) return new Date();
+    
+    // Normalize dots to slashes if formatted as DD.MM.YYYY or DD.MM
+    if (/^\d{1,2}\.\d{1,2}(\.\d{2,4})?$/.test(s)) {
+      s = s.replace(/\./g, '/');
+    }
+
     const datePart = s.indexOf('T') !== -1 ? s.split('T')[0] : s;
+    if (datePart.includes('/')) {
+      const ptParts = datePart.split('/');
+      if (ptParts.length === 3) {
+        let y = parseInt(ptParts[2], 10);
+        if (y < 100) y += 2000;
+        return new Date(y, parseInt(ptParts[1], 10) - 1, parseInt(ptParts[0], 10));
+      } else if (ptParts.length === 2) {
+        // "04/09" -> 4th of September
+        return new Date(targetYr, parseInt(ptParts[1], 10) - 1, parseInt(ptParts[0], 10));
+      }
+    }
+
     const parts = datePart.split('-');
     if (parts.length === 3) {
-      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      if (parts[0].length === 4) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      } else {
+        let y = parseInt(parts[2], 10);
+        if (y < 100) y += 2000;
+        return new Date(y, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+      }
+    } else if (parts.length === 2) {
+      // "04-09"
+      return new Date(targetYr, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
     }
-    const ptParts = datePart.split('/');
-    if (ptParts.length === 3) {
-      return new Date(parseInt(ptParts[2], 10), parseInt(ptParts[1], 10) - 1, parseInt(ptParts[0], 10));
+
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+      let y = parsed.getFullYear();
+      if (y < 100) parsed.setFullYear(y + 2000);
+      if ((y === 2001 || y === 1926) && targetYr !== y) parsed.setFullYear(targetYr);
+      return parsed;
     }
-    return new Date(dateStr);
+    return new Date();
   }
 
 $(document).ready(function() {
@@ -341,6 +385,7 @@ function openAddCategoryModal(macroProfile) {
   }
 
   let GLOBAL_MOCK_TRANSACTIONS = [
+    { data: "2026-09-04", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário", origem: "Conta Itaú" },
     { data: "2026-05-20", valor: 500.00, tipo: "Saída", descricao: "CDB LIMITE GARANTIDO", categoria: "", origem: "Conta Nubank" },
     { data: "2026-05-18", valor: 145.50, tipo: "Saída", descricao: "DONA 216 NORTE", categoria: "", origem: "Cartão Nubank" },
     { data: "2026-05-14", valor: 88.20, tipo: "Saída", descricao: "DONA 216 NORTE", categoria: "", origem: "Cartão Nubank" },
@@ -383,6 +428,10 @@ function openAddCategoryModal(macroProfile) {
       const parsedMock = JSON.parse(savedMockTx);
       if (Array.isArray(parsedMock) && parsedMock.length > 0) {
         GLOBAL_MOCK_TRANSACTIONS = parsedMock;
+        // Ensure 2026-09-04 salary is present
+        if (!GLOBAL_MOCK_TRANSACTIONS.some(t => (t.data === '2026-09-04' || t.data === '04/09/2026' || t.data === '04/09') && String(t.categoria || t.descricao).toLowerCase().includes('salário'))) {
+          GLOBAL_MOCK_TRANSACTIONS.unshift({ id: "mock_tx_salario_sep_04", data: "2026-09-04", valor: 5000.00, tipo: "Entrada", descricao: "Salário Mensal", categoria: "Salário", origem: "Conta Itaú" });
+        }
       }
     }
   } catch(e) {
@@ -5216,10 +5265,18 @@ $(document).ready(function() {
     // 1B. Complementar ou consolidar com transações brutas de allTxs (apenas se houver transações carregadas)
     if (allTxs && allTxs.length > 0) {
       allTxs.forEach(t => {
-        if (!t.categoria || !t.data) return;
-        const d = parseLocalDateString(t.data);
-        if (!d) return;
-        const cat = String(t.categoria).trim();
+        if (!t.data) return;
+        const d = parseLocalDateString(t.data, targetYear);
+        if (!d || isNaN(d.getTime())) return;
+        let cat = String(t.categoria || '').trim();
+        const desc = String(t.descricao || '').trim().toLowerCase();
+        if (!cat || cat.toLowerCase() === 'outros' || cat.toLowerCase() === 'revisar') {
+          if (desc.includes('salario') || desc.includes('remuneracao') || desc.includes('folha de pag')) {
+            cat = 'Salário';
+          }
+        }
+        if (!cat) return;
+        if (cat.toLowerCase() === 'salario') cat = 'Salário';
         const val = Math.abs(parseFloat(t.valor) || 0);
         const m = d.getMonth() + 1;
         const y = d.getFullYear();
@@ -5556,12 +5613,37 @@ $(document).ready(function() {
     if (!data.expenseMacros) data.expenseMacros = { 'Fixas': {}, 'Variáveis Essenciais': {}, 'Discricionárias': {} };
 
     // Remove qualquer categoria que não exista mais em GLOBAL_CATEGORIES (evita re-exibição de categorias excluídas)
+    // MAS NUNCA remove categorias que possuam transações realizadas na planilha!
     if (typeof GLOBAL_CATEGORIES !== 'undefined' && Array.isArray(GLOBAL_CATEGORIES) && GLOBAL_CATEGORIES.length > 0) {
-      const validLower = new Set(GLOBAL_CATEGORIES.map(c => (c.name || '').trim().toLowerCase()));
-      validLower.add('outros');
+      function normCatName(s) {
+        return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      }
+      const validNames = new Set();
+      GLOBAL_CATEGORIES.forEach(c => {
+        if (c.name) {
+          validNames.add(c.name.trim().toLowerCase());
+          validNames.add(normCatName(c.name));
+        }
+      });
+      validNames.add('outros');
+      validNames.add('outras receitas');
+      validNames.add('salario');
+      validNames.add('salário');
+
       if (data.incomeCategories) {
         Object.keys(data.incomeCategories).forEach(cat => {
-          if (!validLower.has(cat.trim().toLowerCase())) {
+          const cells = data.incomeCategories[cat];
+          const hasRealized = Array.isArray(cells) && cells.some(c => c && ((c.realized && c.realized > 0) || (c.total && c.total > 0 && !c.isForecast)));
+          if (hasRealized) {
+            const catNorm = normCatName(cat);
+            if (!validNames.has(catNorm)) {
+              GLOBAL_CATEGORIES.push({ id: Date.now() + Math.random(), name: cat, profile: 'Receita Fixa' });
+              validNames.add(catNorm);
+              validNames.add(cat.trim().toLowerCase());
+            }
+            return;
+          }
+          if (!validNames.has(cat.trim().toLowerCase()) && !validNames.has(normCatName(cat))) {
             delete data.incomeCategories[cat];
           }
         });
@@ -5570,7 +5652,18 @@ $(document).ready(function() {
         ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
           if (data.expenseMacros[macro]) {
             Object.keys(data.expenseMacros[macro]).forEach(cat => {
-              if (!validLower.has(cat.trim().toLowerCase())) {
+              const cells = data.expenseMacros[macro][cat];
+              const hasRealized = Array.isArray(cells) && cells.some(c => c && ((c.realized && c.realized > 0) || (c.total && c.total > 0 && !c.isForecast)));
+              if (hasRealized) {
+                const catNorm = normCatName(cat);
+                if (!validNames.has(catNorm)) {
+                  GLOBAL_CATEGORIES.push({ id: Date.now() + Math.random(), name: cat, profile: macro === 'Fixas' ? 'Despesa Fixa' : 'Despesa Variável' });
+                  validNames.add(catNorm);
+                  validNames.add(cat.trim().toLowerCase());
+                }
+                return;
+              }
+              if (!validNames.has(cat.trim().toLowerCase()) && !validNames.has(normCatName(cat))) {
                 delete data.expenseMacros[macro][cat];
               }
             });
@@ -5689,6 +5782,15 @@ $(document).ready(function() {
               }
               const cell = data.incomeCategories[cat][m - 1];
               const hasRealized = !!(cell.realized && cell.realized > 0);
+
+              // Transações reais da planilha NUNCA devem ser zeradas por overrides de valor 0 ou exclusões de previsão
+              if (hasRealized && (ov.val === 0 || ov.isDeletedForecast || ov.isForecast)) {
+                cell.total = cell.realized;
+                cell.planned = 0;
+                cell.isForecast = false;
+                continue;
+              }
+
               const isFc = ov.isForecast !== undefined ? ov.isForecast : (!hasRealized && isPlanningMonthForecast(data.year, m));
               cell.total = ov.val;
               if (isFc) {
@@ -5719,6 +5821,14 @@ $(document).ready(function() {
                   const ov = catOv[m];
                   const cell = data.expenseMacros[macro][cat][m - 1];
                   const hasRealized = !!(cell.realized && cell.realized > 0);
+
+                  if (hasRealized && (ov.val === 0 || ov.isDeletedForecast || ov.isForecast)) {
+                    cell.total = cell.realized;
+                    cell.planned = 0;
+                    cell.isForecast = false;
+                    continue;
+                  }
+
                   const isFc = ov.isForecast !== undefined ? ov.isForecast : (!hasRealized && isPlanningMonthForecast(data.year, m));
                   cell.total = ov.val;
                   if (isFc) {
@@ -7406,34 +7516,48 @@ $(document).ready(function() {
       txs = applyCategoryOverrides(txs);
     }
     txs.forEach(t => {
-      if (!t.categoria || !t.data) return;
-      const d = parseLocalDateString(t.data);
+      if (!t.data) return;
+      const d = parseLocalDateString(t.data, year);
       if (d.getFullYear() !== year) return;
       const mIdx = d.getMonth();
       const val = Math.abs(parseFloat(t.valor) || 0);
+      if (val === 0) return;
 
-      if (t.tipo === 'Entrada') {
-        if (!incomeCategories[t.categoria]) {
-          incomeCategories[t.categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+      let cat = String(t.categoria || '').trim();
+      let tipo = String(t.tipo || '').trim();
+      const desc = String(t.descricao || '').trim().toLowerCase();
+
+      if (!cat || cat.toLowerCase() === 'outros' || cat.toLowerCase() === 'revisar') {
+        if (desc.includes('salario') || desc.includes('remuneracao') || desc.includes('folha de pag')) {
+          cat = 'Salário';
+          tipo = 'Entrada';
         }
-        incomeCategories[t.categoria][mIdx].realized += val;
-        incomeCategories[t.categoria][mIdx].total += val;
-      } else if (t.tipo === 'Saída') {
+      }
+      if (!cat) cat = (tipo === 'Entrada') ? 'Outras Receitas' : 'Outros';
+      if (cat.toLowerCase() === 'salario') cat = 'Salário';
+
+      if (tipo === 'Entrada' || cat === 'Salário' || desc.includes('salario')) {
+        if (!incomeCategories[cat]) {
+          incomeCategories[cat] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+        }
+        incomeCategories[cat][mIdx].realized += val;
+        incomeCategories[cat][mIdx].total += val;
+      } else {
         let found = false;
         for (const macro of ['Fixas', 'Variáveis Essenciais', 'Discricionárias']) {
-          if (expenseMacros[macro] && expenseMacros[macro][t.categoria]) {
-            expenseMacros[macro][t.categoria][mIdx].realized += val;
-            expenseMacros[macro][t.categoria][mIdx].total += val;
+          if (expenseMacros[macro] && expenseMacros[macro][cat]) {
+            expenseMacros[macro][cat][mIdx].realized += val;
+            expenseMacros[macro][cat][mIdx].total += val;
             found = true;
             break;
           }
         }
         if (!found) {
-          if (!expenseMacros['Discricionárias'][t.categoria]) {
-            expenseMacros['Discricionárias'][t.categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+          if (!expenseMacros['Discricionárias'][cat]) {
+            expenseMacros['Discricionárias'][cat] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
           }
-          expenseMacros['Discricionárias'][t.categoria][mIdx].realized += val;
-          expenseMacros['Discricionárias'][t.categoria][mIdx].total += val;
+          expenseMacros['Discricionárias'][cat][mIdx].realized += val;
+          expenseMacros['Discricionárias'][cat][mIdx].total += val;
         }
       }
     });

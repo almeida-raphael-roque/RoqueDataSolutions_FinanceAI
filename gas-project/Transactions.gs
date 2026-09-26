@@ -86,23 +86,83 @@ function undoLastAction() {
   return true;
 }
 
-function parseFlexDate(dateVal) {
-  if (!dateVal) return new Date(NaN);
-  if (dateVal instanceof Date) return dateVal;
+function parseFlexDate(dateVal, fallbackYear) {
+  if (!dateVal && dateVal !== 0) return new Date(NaN);
   
-  const strVal = dateVal.toString().trim();
-  
-  let parts = strVal.split('T')[0].split('-');
-  if (parts.length === 3) {
-    return new Date(parts[0], parseInt(parts[1])-1, parts[2]);
+  const targetYr = (fallbackYear !== undefined && fallbackYear !== 'all' && parseInt(fallbackYear, 10))
+    ? parseInt(fallbackYear, 10)
+    : new Date().getFullYear();
+
+  if (dateVal instanceof Date) {
+    if (isNaN(dateVal.getTime())) return new Date(NaN);
+    let y = dateVal.getFullYear();
+    if (y < 100) {
+      dateVal.setFullYear(y + 2000);
+    }
+    // If year was parsed as 2001 or 1926 due to legacy parsing of DD/MM or 2-digit year
+    if ((y === 2001 || y === 1926) && targetYr !== y) {
+      dateVal.setFullYear(targetYr);
+    }
+    return dateVal;
   }
   
-  let ptParts = strVal.split('/');
-  if (ptParts.length === 3) {
-    return new Date(ptParts[2], parseInt(ptParts[1])-1, ptParts[0]);
+  let cleanStr = String(dateVal).trim();
+  if (!cleanStr) return new Date(NaN);
+
+  // Normalize dots to slashes if formatted as DD.MM.YYYY or DD.MM
+  if (/^\d{1,2}\.\d{1,2}(\.\d{2,4})?$/.test(cleanStr)) {
+    cleanStr = cleanStr.replace(/\./g, '/');
+  }
+
+  // Format DD/MM/YYYY or DD/MM/YY or DD/MM
+  if (cleanStr.includes('/')) {
+    let ptParts = cleanStr.split('/');
+    if (ptParts.length === 3) {
+      let d = parseInt(ptParts[0], 10);
+      let m = parseInt(ptParts[1], 10) - 1;
+      let y = parseInt(ptParts[2], 10);
+      if (y < 100) y += 2000;
+      return new Date(y, m, d);
+    } else if (ptParts.length === 2) {
+      // E.g. "04/09" -> 4th of September
+      let d = parseInt(ptParts[0], 10);
+      let m = parseInt(ptParts[1], 10) - 1;
+      return new Date(targetYr, m, d);
+    }
   }
   
-  return new Date(strVal);
+  // Format YYYY-MM-DD or DD-MM-YYYY or DD-MM
+  if (cleanStr.includes('-')) {
+    let parts = cleanStr.split('T')[0].split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      } else {
+        // DD-MM-YYYY
+        let d = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10) - 1;
+        let y = parseInt(parts[2], 10);
+        if (y < 100) y += 2000;
+        return new Date(y, m, d);
+      }
+    } else if (parts.length === 2) {
+      // E.g. "04-09" -> 4th of September
+      let d = parseInt(parts[0], 10);
+      let m = parseInt(parts[1], 10) - 1;
+      return new Date(targetYr, m, d);
+    }
+  }
+  
+  const standard = new Date(cleanStr);
+  if (!isNaN(standard.getTime())) {
+    let y = standard.getFullYear();
+    if (y < 100) standard.setFullYear(y + 2000);
+    if ((y === 2001 || y === 1926) && targetYr !== y) standard.setFullYear(targetYr);
+    return standard;
+  }
+  
+  return new Date(NaN);
 }
 
 function parseValor(val) {
@@ -120,9 +180,10 @@ function parseValor(val) {
 
 function isMatch(dateVal, yearStr, monthStr) {
   if (yearStr === 'all' && monthStr === 'all') return true;
-  if (!dateVal) return false;
+  if (!dateVal && dateVal !== 0) return false;
   
-  const d = parseFlexDate(dateVal);
+  const targetY = (yearStr !== 'all' && parseInt(yearStr, 10)) ? parseInt(yearStr, 10) : new Date().getFullYear();
+  const d = parseFlexDate(dateVal, targetY);
   
   if (isNaN(d.getTime())) return false; // Ignore invalids if filtering
   
@@ -144,20 +205,37 @@ function getTransactions(year = 'all', month = 'all') {
   let cats = [];
   try { cats = getGlobalCategories(); } catch(e) {}
   const catNameMap = {};
-  cats.forEach(c => catNameMap[String(c.name).toLowerCase()] = c.name);
+  cats.forEach(c => {
+    if (c.name) {
+      catNameMap[String(c.name).toLowerCase()] = c.name;
+      catNameMap[String(c.name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()] = c.name;
+    }
+  });
   
+  const targetYear = (year !== 'all' && parseInt(year, 10)) ? parseInt(year, 10) : new Date().getFullYear();
   const rows = [];
   for (let i = data.length - 1; i >= 1; i--) { 
     const row = data[i];
-    const displayDate = displayData[i][5];
-    if (isMatch(displayDate, year, month)) {
-      let dateStr = displayDate;
-      // If it is in dd/mm/yyyy format from display, convert to yyyy-mm-dd so frontend parses it consistently
-      if (dateStr.includes('/')) {
-        let parts = dateStr.split('/');
-        if (parts.length === 3) {
-          dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        }
+    const displayDate = (displayData && displayData[i]) ? displayData[i][5] : '';
+    const rawDate = row[5];
+    
+    // Check match with both display and raw
+    const matched = isMatch(displayDate, year, month) || isMatch(rawDate, year, month);
+    if (matched) {
+      let d = parseFlexDate(rawDate, targetYear);
+      if (isNaN(d.getTime()) || (d.getFullYear() !== targetYear && displayDate)) {
+        const dDisp = parseFlexDate(displayDate, targetYear);
+        if (!isNaN(dDisp.getTime())) d = dDisp;
+      }
+      
+      let dateStr = '';
+      if (!isNaN(d.getTime())) {
+        const yStr = d.getFullYear();
+        const mStr = String(d.getMonth() + 1).padStart(2, '0');
+        const dStr = String(d.getDate()).padStart(2, '0');
+        dateStr = `${yStr}-${mStr}-${dStr}`;
+      } else {
+        dateStr = String(displayDate || rawDate || '');
       }
 
       let tipo = String(row[3] || '').trim();
@@ -165,7 +243,10 @@ function getTransactions(year = 'all', month = 'all') {
       if (tipoL === 'saída' || tipoL === 'saida' || tipoL === 'despesa') tipo = 'Saída';
       else if (tipoL === 'entrada' || tipoL === 'receita') tipo = 'Entrada';
       let categoria = String(row[2] || '').trim();
-      if (categoria && catNameMap[categoria.toLowerCase()]) {
+      const catNorm = categoria.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      if (categoria && catNameMap[catNorm]) {
+        categoria = catNameMap[catNorm];
+      } else if (categoria && catNameMap[categoria.toLowerCase()]) {
         categoria = catNameMap[categoria.toLowerCase()];
       }
       rows.push({
@@ -356,30 +437,57 @@ function getPlanningData(year) {
   const data = sheet.getDataRange().getValues();
   const displayData = sheet.getDataRange().getDisplayValues();
   
+  function normStr(s) {
+    if (!s) return '';
+    return String(s)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
   let cats = [];
   try { cats = getGlobalCategories(); } catch(e) {}
   const catMacroMap = {};
+  const catNameMap = {};
   cats.forEach(c => {
-    if (c.name && c.profile) {
-      const cLower = String(c.name).toLowerCase().trim();
-      const prof = String(c.profile).trim();
+    if (c.name) {
+      const cName = String(c.name).trim();
+      const cLower = cName.toLowerCase();
+      const cNorm = normStr(cName);
+      catNameMap[cLower] = cName;
+      catNameMap[cNorm] = cName;
+
+      const prof = String(c.profile || '').trim();
+      let macro = 'Discricionárias';
       if (prof.includes('Receita')) {
-        catMacroMap[cLower] = 'Receitas';
+        macro = 'Receitas';
       } else if (prof.includes('Fixa')) {
-        catMacroMap[cLower] = 'Fixas';
+        macro = 'Fixas';
       } else if (prof.includes('Variável') || prof.includes('Essencia')) {
-        catMacroMap[cLower] = 'Variáveis Essenciais';
-      } else {
-        catMacroMap[cLower] = 'Discricionárias';
+        macro = 'Variáveis Essenciais';
       }
+      catMacroMap[cLower] = macro;
+      catMacroMap[cNorm] = macro;
     }
   });
-  
+
+  // Ensure 'Salário' is mapped to Receitas
+  if (!catNameMap['salario']) {
+    catNameMap['salario'] = 'Salário';
+    catNameMap['salário'] = 'Salário';
+    catMacroMap['salario'] = 'Receitas';
+    catMacroMap['salário'] = 'Receitas';
+  }
+
+  let userRules = [];
+  try { userRules = getUserRules(); } catch(e) {}
+
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const currentYear = now.getFullYear();
   const currentMonthNum = now.getMonth() + 1;
-  const targetYear = parseInt(year, 10);
+  const targetYear = parseInt(year, 10) || currentYear;
   
   const monthsMeta = [];
   for (let i = 1; i <= 12; i++) {
@@ -404,7 +512,7 @@ function getPlanningData(year) {
     if (!c.name) return;
     const cName = String(c.name).trim();
     const cLower = cName.toLowerCase();
-    const macro = catMacroMap[cLower];
+    const macro = catMacroMap[cLower] || catMacroMap[normStr(cName)];
     if (macro === 'Receitas') {
       if (!incomeCategories[cName]) {
         incomeCategories[cName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
@@ -416,36 +524,87 @@ function getPlanningData(year) {
     }
   });
 
+  // Ensure Salário category exists in incomeCategories
+  if (!incomeCategories['Salário']) {
+    incomeCategories['Salário'] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+  }
+
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const d = parseFlexDate(displayData[i][5]);
+    const dispVal = (displayData && displayData[i]) ? displayData[i][5] : '';
+    const rawVal = row[5];
+    
+    // Parse date checking both rawVal and dispVal
+    let d = parseFlexDate(rawVal, targetYear);
+    if (isNaN(d.getTime()) || (d.getFullYear() !== targetYear && dispVal)) {
+      const dDisp = parseFlexDate(dispVal, targetYear);
+      if (!isNaN(dDisp.getTime())) {
+        d = dDisp;
+      }
+    }
     if (isNaN(d.getTime())) continue;
     if (d.getFullYear() !== targetYear) continue;
 
     const mIdx = d.getMonth();
     const valor = parseValor(row[4]);
-    let categoria = String(row[2] || 'Outros').trim();
+    if (valor === 0) continue;
+
+    let categoria = String(row[2] || '').trim();
     let tipo = String(row[3] || '').trim();
-    if (tipo.toLowerCase() === 'saída' || tipo.toLowerCase() === 'despesa') tipo = 'Saída';
-    else tipo = 'Entrada';
-    
     const desc = String(row[1] || '').trim();
-    
-    let txStatus = 'planned';
-    if (d.getTime() <= today.getTime()) {
-        txStatus = 'realized';
+    const normDesc = normStr(desc);
+
+    // Rule-based classification if category is empty, 'Outros', or 'Revisar'
+    if (!categoria || categoria.toLowerCase() === 'outros' || categoria.toLowerCase() === 'revisar') {
+      if (userRules && userRules.length > 0) {
+        for (let r = 0; r < userRules.length; r++) {
+          const pat = normStr(userRules[r].pattern);
+          if (pat && normDesc.includes(pat)) {
+            categoria = userRules[r].categoria;
+            break;
+          }
+        }
+      }
     }
 
-    const catLower = categoria.toLowerCase();
-    const explicitMacro = catMacroMap[catLower];
+    // Heuristics for salary if description matches
+    if (normDesc.includes('salario') || normDesc.includes('remuneracao') || normDesc.includes('provento') || normDesc.includes('folha de pag')) {
+      if (!categoria || categoria.toLowerCase() === 'outros' || categoria.toLowerCase() === 'revisar') {
+        categoria = 'Salário';
+      }
+      if (!tipo || tipo.toLowerCase() === 'saída') {
+        tipo = 'Entrada';
+      }
+    }
+
+    // Canonical category name
+    const catNorm = normStr(categoria);
+    if (categoria && catNameMap[catNorm]) {
+      categoria = catNameMap[catNorm];
+    } else if (categoria && catNameMap[categoria.toLowerCase()]) {
+      categoria = catNameMap[categoria.toLowerCase()];
+    } else if (!categoria) {
+      categoria = (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita') ? 'Outras Receitas' : 'Outros';
+    }
+
+    const explicitMacro = catMacroMap[catNorm] || catMacroMap[categoria.toLowerCase()];
 
     let isIncome = false;
     if (explicitMacro === 'Receitas') {
       isIncome = true;
+    } else if (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita') {
+      isIncome = true;
+    } else if (catNorm.includes('salario') || catNorm.includes('rendimento') || catNorm.includes('receita')) {
+      isIncome = true;
     } else if (explicitMacro) {
       isIncome = false;
     } else {
-      isIncome = (tipo === 'Entrada');
+      isIncome = (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita');
+    }
+
+    let txStatus = 'planned';
+    if (d.getTime() <= today.getTime() || (d.getFullYear() === currentYear && (mIdx + 1) <= currentMonthNum)) {
+      txStatus = 'realized';
     }
 
     if (isIncome) {
@@ -463,6 +622,57 @@ function getPlanningData(year) {
       expenseMacros[macro][categoria][mIdx][txStatus] += valor;
       expenseMacros[macro][categoria][mIdx].total += valor;
     }
+  }
+
+  // Merge server-side planning manual overrides if any
+  try {
+    const overrides = getPlanningOverridesBackend();
+    const yStr = String(targetYear);
+    if (overrides && overrides[yStr]) {
+      const yearOv = overrides[yStr];
+      let ovBackendChanged = false;
+      Object.keys(yearOv).forEach(cat => {
+        const catClean = cat.trim().toLowerCase();
+        for (let m = 1; m <= 12; m++) {
+          if (yearOv[cat] && yearOv[cat][m] !== undefined) {
+            const ov = yearOv[cat][m];
+            // Apenas para o ano corrente (2026), se for resíduo zerado de Outubro em ENTRADAS ou JANETE
+            if (targetYear === 2026 && (catClean === 'entradas' || catClean === 'janete') && m === 10 && ov.val === 0) {
+              delete yearOv[cat][m];
+              ovBackendChanged = true;
+              continue;
+            }
+            if (incomeCategories[cat]) {
+              const cell = incomeCategories[cat][m - 1];
+              // Never let an override of 0 or deleted-forecast wipe out actual realized transactions!
+              if (cell.realized === 0 || (ov.val > 0 && !ov.isDeletedForecast)) {
+                cell.total = ov.val;
+                cell.isManualOverride = true;
+              }
+            } else {
+              for (const macro of ['Fixas', 'Variáveis Essenciais', 'Discricionárias']) {
+                if (expenseMacros[macro] && expenseMacros[macro][cat]) {
+                  const cell = expenseMacros[macro][cat][m - 1];
+                  if (cell.realized === 0 || (ov.val > 0 && !ov.isDeletedForecast)) {
+                    cell.total = ov.val;
+                    cell.isManualOverride = true;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        }
+      });
+      if (ovBackendChanged) {
+        try {
+          const userProp = PropertiesService.getUserProperties();
+          userProp.setProperty('PLANNING_MANUAL_OVERRIDES', JSON.stringify(overrides));
+        } catch(e) {}
+      }
+    }
+  } catch (e) {
+    console.error('Error applying server overrides', e);
   }
 
   const monthlyTotals = Array.from({length: 12}, () => ({ income: 0, expense: 0, balance: 0 }));
@@ -499,50 +709,6 @@ function getPlanningData(year) {
 
   summary.currentBalance = summary.incomeRealized - summary.expenseRealized;
   summary.projectedBalance = (summary.incomeRealized + summary.incomePlanned) - (summary.expenseRealized + summary.expensePlanned);
-
-  // Merge server-side planning manual overrides if any
-  try {
-    const overrides = getPlanningOverridesBackend();
-    const yStr = String(targetYear);
-    if (overrides && overrides[yStr]) {
-      const yearOv = overrides[yStr];
-      let ovBackendChanged = false;
-      Object.keys(yearOv).forEach(cat => {
-        const catClean = cat.trim().toLowerCase();
-        for (let m = 1; m <= 12; m++) {
-          if (yearOv[cat] && yearOv[cat][m] !== undefined) {
-            const ov = yearOv[cat][m];
-            // Apenas para o ano corrente (2026), se for resíduo zerado de Outubro em ENTRADAS ou JANETE
-            if (targetYear === 2026 && (catClean === 'entradas' || catClean === 'janete') && m === 10 && ov.val === 0) {
-              delete yearOv[cat][m];
-              ovBackendChanged = true;
-              continue;
-            }
-            if (incomeCategories[cat]) {
-              incomeCategories[cat][m - 1].total = ov.val;
-              incomeCategories[cat][m - 1].isManualOverride = true;
-            } else {
-              for (const macro of ['Fixas', 'Variáveis Essenciais', 'Discricionárias']) {
-                if (expenseMacros[macro] && expenseMacros[macro][cat]) {
-                  expenseMacros[macro][cat][m - 1].total = ov.val;
-                  expenseMacros[macro][cat][m - 1].isManualOverride = true;
-                  break;
-                }
-              }
-            }
-          }
-        }
-      });
-      if (ovBackendChanged) {
-        try {
-          const userProp = PropertiesService.getUserProperties();
-          userProp.setProperty('PLANNING_MANUAL_OVERRIDES', JSON.stringify(overrides));
-        } catch(e) {}
-      }
-    }
-  } catch (e) {
-    console.error('Error applying server overrides', e);
-  }
 
   return {
     year: targetYear,
