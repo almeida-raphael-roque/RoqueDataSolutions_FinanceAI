@@ -98,22 +98,25 @@ function parseFlexDate(dateVal, fallbackYear) {
     const dNum = new Date(Math.round((dateVal - 25569) * 86400000));
     if (!isNaN(dNum.getTime())) {
       let y = dNum.getFullYear();
-      if ((y === 2001 || y === 1926) && targetYr !== y) dNum.setFullYear(targetYr);
+      if ((y === 2001 || y === 1926 || y < 1970) && targetYr !== y) dNum.setFullYear(targetYr);
       return dNum;
     }
   }
 
   if (dateVal instanceof Date) {
     if (isNaN(dateVal.getTime())) return new Date(NaN);
-    let y = dateVal.getFullYear();
+    // Clone Date to avoid mutating original
+    const dObj = new Date(dateVal.getTime());
+    let y = dObj.getFullYear();
     if (y < 100) {
-      dateVal.setFullYear(y + 2000);
+      dObj.setFullYear(y + 2000);
+      y = dObj.getFullYear();
     }
-    // If year was parsed as 2001 or 1926 due to legacy parsing of DD/MM or 2-digit year
-    if ((y === 2001 || y === 1926) && targetYr !== y) {
-      dateVal.setFullYear(targetYr);
+    // If year was parsed as 2001 or 1926 or < 1970 due to legacy parsing of DD/MM or 2-digit year
+    if ((y === 2001 || y === 1926 || y < 1970) && targetYr !== y) {
+      dObj.setFullYear(targetYr);
     }
-    return dateVal;
+    return dObj;
   }
   
   let cleanStr = String(dateVal).trim();
@@ -126,26 +129,36 @@ function parseFlexDate(dateVal, fallbackYear) {
       const dNum = new Date(Math.round((num - 25569) * 86400000));
       if (!isNaN(dNum.getTime())) {
         let y = dNum.getFullYear();
-        if ((y === 2001 || y === 1926) && targetYr !== y) dNum.setFullYear(targetYr);
+        if ((y === 2001 || y === 1926 || y < 1970) && targetYr !== y) dNum.setFullYear(targetYr);
         return dNum;
       }
     }
   }
+
+  // Strip time if separated by space or T
+  cleanStr = cleanStr.split(' ')[0].split('T')[0].trim();
 
   // Normalize dots to slashes if formatted as DD.MM.YYYY or DD.MM
   if (/^\d{1,2}\.\d{1,2}(\.\d{2,4})?$/.test(cleanStr)) {
     cleanStr = cleanStr.replace(/\./g, '/');
   }
 
-  // Format DD/MM/YYYY or DD/MM/YY or DD/MM
+  // Format DD/MM/YYYY, YYYY/MM/DD, DD/MM/YY or DD/MM
   if (cleanStr.includes('/')) {
     let ptParts = cleanStr.split('/');
     if (ptParts.length === 3) {
-      let d = parseInt(ptParts[0], 10);
-      let m = parseInt(ptParts[1], 10) - 1;
-      let y = parseInt(ptParts[2], 10);
-      if (y < 100) y += 2000;
-      return new Date(y, m, d);
+      if (ptParts[0].length === 4) {
+        // YYYY/MM/DD
+        return new Date(parseInt(ptParts[0], 10), parseInt(ptParts[1], 10) - 1, parseInt(ptParts[2], 10));
+      } else {
+        // DD/MM/YYYY or DD/MM/YY
+        let d = parseInt(ptParts[0], 10);
+        let m = parseInt(ptParts[1], 10) - 1;
+        let y = parseInt(ptParts[2], 10);
+        if (y < 100) y += 2000;
+        if ((y === 2001 || y === 1926 || y < 1970) && targetYr !== y) y = targetYr;
+        return new Date(y, m, d);
+      }
     } else if (ptParts.length === 2) {
       // E.g. "04/09" -> 4th of September
       let d = parseInt(ptParts[0], 10);
@@ -156,7 +169,7 @@ function parseFlexDate(dateVal, fallbackYear) {
   
   // Format YYYY-MM-DD or DD-MM-YYYY or DD-MM
   if (cleanStr.includes('-')) {
-    let parts = cleanStr.split('T')[0].split('-');
+    let parts = cleanStr.split('-');
     if (parts.length === 3) {
       if (parts[0].length === 4) {
         // YYYY-MM-DD
@@ -167,6 +180,7 @@ function parseFlexDate(dateVal, fallbackYear) {
         let m = parseInt(parts[1], 10) - 1;
         let y = parseInt(parts[2], 10);
         if (y < 100) y += 2000;
+        if ((y === 2001 || y === 1926 || y < 1970) && targetYr !== y) y = targetYr;
         return new Date(y, m, d);
       }
     } else if (parts.length === 2) {
@@ -181,7 +195,7 @@ function parseFlexDate(dateVal, fallbackYear) {
   if (!isNaN(standard.getTime())) {
     let y = standard.getFullYear();
     if (y < 100) standard.setFullYear(y + 2000);
-    if ((y === 2001 || y === 1926) && targetYr !== y) standard.setFullYear(targetYr);
+    if ((y === 2001 || y === 1926 || y < 1970) && targetYr !== y) standard.setFullYear(targetYr);
     return standard;
   }
   
@@ -191,7 +205,7 @@ function parseFlexDate(dateVal, fallbackYear) {
 function parseValor(val) {
   if (typeof val === 'number') return val;
   if (!val) return 0;
-  let str = String(val).replace(/[R\$\s]/gi, '').trim();
+  let str = String(val).replace(/R\$/gi, '').replace(/[\s\u00A0]/g, '').trim();
   if (str.includes(',') && str.includes('.')) {
     str = str.replace(/\./g, '').replace(',', '.');
   } else if (str.includes(',')) {
@@ -266,8 +280,18 @@ function getTransactions(year = 'all', month = 'all') {
       if (tipoL === 'saída' || tipoL === 'saida' || tipoL === 'despesa') tipo = 'Saída';
       else if (tipoL === 'entrada' || tipoL === 'receita') tipo = 'Entrada';
       let categoria = String(row[2] || '').trim();
+      const desc = String(row[1] || '').trim();
+      const normDesc = desc.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
       const catNorm = categoria.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-      if (categoria && catNameMap[catNorm]) {
+
+      const isSalaryTx = catNorm === 'salario' || catNorm === 'salario / renda' ||
+        normDesc.includes('salario') || normDesc.includes('remuneracao') || normDesc.includes('provento') ||
+        normDesc.includes('folha de pag') || normDesc.includes('holerite');
+
+      if (isSalaryTx) {
+        categoria = 'SALARIO';
+        tipo = 'Entrada';
+      } else if (categoria && catNameMap[catNorm]) {
         categoria = catNameMap[catNorm];
       } else if (categoria && catNameMap[categoria.toLowerCase()]) {
         categoria = catNameMap[categoria.toLowerCase()];
@@ -540,7 +564,7 @@ function getPlanningData(year) {
     });
   }
 
-  // Pre-seed categories from global configuration so customized categories appear (excluding ones excluded for this year)
+  // Pre-seed categories from global configuration so customized categories appear
   cats.forEach(c => {
     if (!c.name) return;
     const cName = String(c.name).trim();
@@ -548,19 +572,24 @@ function getPlanningData(year) {
     const cNorm = normStr(cName);
     if (excludedCatsSet.has(cLower) || excludedCatsSet.has(cNorm)) return;
 
-    const macro = catMacroMap[cLower] || catMacroMap[cNorm];
+    let macro = catMacroMap[cLower] || catMacroMap[cNorm];
+    if (cLower === 'salario' || cLower === 'salário' || cName === 'SALARIO') {
+      macro = 'Receitas';
+    }
+    const finalCatName = (cLower === 'salario' || cLower === 'salário') ? 'SALARIO' : cName;
+
     if (macro === 'Receitas') {
-      if (!incomeCategories[cName]) {
-        incomeCategories[cName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+      if (!incomeCategories[finalCatName]) {
+        incomeCategories[finalCatName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
       }
     } else if (macro && expenseMacros[macro]) {
-      if (!expenseMacros[macro][cName]) {
-        expenseMacros[macro][cName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
+      if (!expenseMacros[macro][finalCatName]) {
+        expenseMacros[macro][finalCatName] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
       }
     }
   });
 
-  // Ensure SALARIO category exists in incomeCategories unless explicitly excluded for this year
+  // Ensure SALARIO category exists in incomeCategories unless explicitly excluded
   if (!excludedCatsSet.has('salario') && !excludedCatsSet.has('salário') && !incomeCategories['SALARIO']) {
     incomeCategories['SALARIO'] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
   }
@@ -582,9 +611,19 @@ function getPlanningData(year) {
       d = parseFlexDate(rawVal, targetYear);
     }
     if (!d || isNaN(d.getTime())) continue;
-    if (d.getFullYear() !== targetYear) continue;
+
+    // If date parsed without targetYear, but user is looking at targetYear and date didn't have explicit conflicting 4-digit year:
+    if (d.getFullYear() !== targetYear) {
+      const sDisp = String(dispVal || rawVal || '');
+      if (sDisp.includes(String(targetYear)) || !/\b20\d{2}\b/.test(sDisp)) {
+        d.setFullYear(targetYear);
+      } else {
+        continue;
+      }
+    }
 
     const mIdx = d.getMonth();
+    if (mIdx < 0 || mIdx > 11) continue;
     const valor = Math.abs(parseValor(row[4]));
     if (valor === 0) continue;
 
@@ -592,53 +631,48 @@ function getPlanningData(year) {
     let tipo = String(row[3] || '').trim();
     const desc = String(row[1] || '').trim();
     const normDesc = normStr(desc);
+    const catLower = categoria.toLowerCase();
+    const catNorm = normStr(categoria);
 
-    // Rule-based classification if category is empty, 'Outros', or 'Revisar'
-    if (!categoria || categoria.toLowerCase() === 'outros' || categoria.toLowerCase() === 'revisar') {
-      if (userRules && userRules.length > 0) {
-        for (let r = 0; r < userRules.length; r++) {
-          const pat = normStr(userRules[r].pattern);
-          if (pat && normDesc.includes(pat)) {
-            categoria = userRules[r].categoria;
-            break;
+    // Heuristics for salary if category or description matches
+    const isSalaryTx = catNorm === 'salario' || catNorm === 'salario / renda' || catLower === 'salario' || catLower === 'salário' ||
+      normDesc.includes('salario') || normDesc.includes('remuneracao') || normDesc.includes('provento') ||
+      normDesc.includes('folha de pag') || normDesc.includes('holerite');
+
+    if (isSalaryTx) {
+      categoria = 'SALARIO';
+      tipo = 'Entrada';
+    } else {
+      // Rule-based classification if category is empty, 'Outros', or 'Revisar'
+      if (!categoria || catLower === 'outros' || catLower === 'revisar') {
+        if (userRules && userRules.length > 0) {
+          for (let r = 0; r < userRules.length; r++) {
+            const pat = normStr(userRules[r].pattern);
+            if (pat && normDesc.includes(pat)) {
+              categoria = userRules[r].categoria;
+              break;
+            }
           }
         }
       }
+
+      if (categoria && catNameMap[catNorm]) {
+        categoria = catNameMap[catNorm];
+      } else if (categoria && catNameMap[catLower]) {
+        categoria = catNameMap[catLower];
+      } else if (!categoria) {
+        categoria = (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita') ? 'Outras Receitas' : 'Outros';
+      }
     }
 
-    // Heuristics for salary if description matches
-    if (normDesc.includes('salario') || normDesc.includes('remuneracao') || normDesc.includes('provento') || normDesc.includes('folha de pag')) {
-      categoria = 'SALARIO';
-      tipo = 'Entrada';
-    }
-
-    // Canonical category name
-    const catNorm = normStr(categoria);
-    if (categoria.toLowerCase() === 'salario' || categoria.toLowerCase() === 'salário') {
-      categoria = 'SALARIO';
-    } else if (categoria && catNameMap[catNorm]) {
-      categoria = catNameMap[catNorm];
-    } else if (categoria && catNameMap[categoria.toLowerCase()]) {
-      categoria = catNameMap[categoria.toLowerCase()];
-    } else if (!categoria) {
-      categoria = (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita') ? 'Outras Receitas' : 'Outros';
-    }
-
-    // Check if category is excluded specifically for targetYear
-    const catClean = categoria.trim().toLowerCase();
-    const catNormClean = normStr(categoria);
-    if (excludedCatsSet.has(catClean) || excludedCatsSet.has(catNormClean)) {
-      continue;
-    }
-
-    const explicitMacro = catMacroMap[catNorm] || catMacroMap[categoria.toLowerCase()];
+    const explicitMacro = catMacroMap[normStr(categoria)] || catMacroMap[categoria.toLowerCase()];
 
     let isIncome = false;
-    if (categoria === 'SALARIO' || explicitMacro === 'Receitas') {
+    if (categoria === 'SALARIO' || isSalaryTx || explicitMacro === 'Receitas') {
       isIncome = true;
     } else if (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita') {
       isIncome = true;
-    } else if (catNorm.includes('salario') || catNorm.includes('rendimento') || catNorm.includes('receita')) {
+    } else if (normStr(categoria).includes('salario') || normStr(categoria).includes('rendimento') || normStr(categoria).includes('receita')) {
       isIncome = true;
     } else if (explicitMacro) {
       isIncome = false;
@@ -646,25 +680,22 @@ function getPlanningData(year) {
       isIncome = (tipo.toLowerCase() === 'entrada' || tipo.toLowerCase() === 'receita');
     }
 
-    let txStatus = 'planned';
-    if (d.getTime() <= today.getTime() || (d.getFullYear() === currentYear && (mIdx + 1) <= currentMonthNum)) {
-      txStatus = 'realized';
-    }
-
     if (isIncome) {
       if (!incomeCategories[categoria]) {
         incomeCategories[categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
       }
-      incomeCategories[categoria][mIdx][txStatus] += valor;
+      incomeCategories[categoria][mIdx].realized += valor;
       incomeCategories[categoria][mIdx].total += valor;
+      incomeCategories[categoria][mIdx].hasActualTransactions = true;
     } else {
       let macro = explicitMacro || getMacroCategory(categoria, desc, catMacroMap);
       if (!expenseMacros[macro]) macro = 'Discricionárias';
       if (!expenseMacros[macro][categoria]) {
         expenseMacros[macro][categoria] = Array.from({length: 12}, () => ({ realized: 0, planned: 0, total: 0 }));
       }
-      expenseMacros[macro][categoria][mIdx][txStatus] += valor;
+      expenseMacros[macro][categoria][mIdx].realized += valor;
       expenseMacros[macro][categoria][mIdx].total += valor;
+      expenseMacros[macro][categoria][mIdx].hasActualTransactions = true;
     }
   }
 
@@ -723,17 +754,25 @@ function getPlanningData(year) {
     console.error('Error applying server overrides', e);
   }
 
-  // Ensure NO excluded category remains in the result for targetYear
+  // Remove excluded categories that do not have actual transactions in the sheet for targetYear
   Object.keys(incomeCategories).forEach(cat => {
-    if (excludedCatsSet.has(cat.trim().toLowerCase()) || excludedCatsSet.has(normStr(cat))) {
-      delete incomeCategories[cat];
+    const isExcluded = excludedCatsSet.has(cat.trim().toLowerCase()) || excludedCatsSet.has(normStr(cat));
+    if (isExcluded) {
+      const hasActual = incomeCategories[cat].some(cell => (cell.realized > 0 || cell.hasActualTransactions));
+      if (!hasActual) {
+        delete incomeCategories[cat];
+      }
     }
   });
   ['Fixas', 'Variáveis Essenciais', 'Discricionárias'].forEach(macro => {
     if (expenseMacros[macro]) {
       Object.keys(expenseMacros[macro]).forEach(cat => {
-        if (excludedCatsSet.has(cat.trim().toLowerCase()) || excludedCatsSet.has(normStr(cat))) {
-          delete expenseMacros[macro][cat];
+        const isExcluded = excludedCatsSet.has(cat.trim().toLowerCase()) || excludedCatsSet.has(normStr(cat));
+        if (isExcluded) {
+          const hasActual = expenseMacros[macro][cat].some(cell => (cell.realized > 0 || cell.hasActualTransactions));
+          if (!hasActual) {
+            delete expenseMacros[macro][cat];
+          }
         }
       });
     }
